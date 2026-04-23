@@ -1,0 +1,9 @@
+# VS Code
+.vscode/
+
+# IntelliJ IDEA
+.idea/
+
+# Environment files (keep secrets out of git)
+**/.env
+**/.env.*
