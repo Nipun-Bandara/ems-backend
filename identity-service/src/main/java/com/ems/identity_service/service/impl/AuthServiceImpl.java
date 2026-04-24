@@ -3,15 +3,18 @@ package com.ems.identity_service.service.impl;
 import com.ems.identity_service.dto.request.LoginRequest;
 import com.ems.identity_service.dto.request.RegisterRequest;
 import com.ems.identity_service.dto.response.AuthResponse;
+import com.ems.identity_service.dto.response.TokenValidationResponse;
 import com.ems.identity_service.entity.RoleEntity;
 import com.ems.identity_service.entity.UserEntity;
 import com.ems.identity_service.entity.UserRoles;
 import com.ems.identity_service.exception.AccountBannedException;
+import com.ems.identity_service.exception.InvalidTokenException;
 import com.ems.identity_service.repository.RoleRepository;
 import com.ems.identity_service.repository.UserRepository;
 import com.ems.identity_service.repository.UserRolesRepository;
 import com.ems.identity_service.security.JwtService;
 import com.ems.identity_service.service.AuthService;
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -156,5 +159,43 @@ public class AuthServiceImpl implements AuthService {
                         .collect(Collectors.toList()))
                 .isBanned(user.getIsBanned())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TokenValidationResponse validateToken(String token) {
+        String jwt = extractRawToken(token);
+
+        try {
+            Long userId = jwtService.extractUserId(jwt);
+            List<String> roles = jwtService.extractRoles(jwt);
+
+            if (userId == null) {
+                throw new InvalidTokenException("Invalid token: missing user ID claim");
+            }
+
+            return TokenValidationResponse.builder()
+                    .userId(userId)
+                    .roles(roles)
+                    .build();
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new InvalidTokenException("Invalid or expired token");
+        }
+    }
+
+    private String extractRawToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new InvalidTokenException("Token is required");
+        }
+
+        if (token.startsWith("Bearer ")) {
+            String bearerToken = token.substring(7);
+            if (bearerToken.isBlank()) {
+                throw new InvalidTokenException("Token is required");
+            }
+            return bearerToken;
+        }
+
+        return token;
     }
 }

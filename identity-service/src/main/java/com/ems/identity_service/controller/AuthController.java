@@ -3,6 +3,7 @@ package com.ems.identity_service.controller;
 import com.ems.identity_service.dto.request.LoginRequest;
 import com.ems.identity_service.dto.request.RegisterRequest;
 import com.ems.identity_service.dto.response.AuthResponse;
+import com.ems.identity_service.dto.response.TokenValidationResponse;
 import com.ems.identity_service.service.AuthService;
 
 import jakarta.validation.Valid;
@@ -41,5 +42,18 @@ public class AuthController {
                 .ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(authService.getCurrentUser());
+    }
+
+    @GetMapping("/validate")
+    public ResponseEntity<TokenValidationResponse> validateToken(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestParam(value = "token", required = false) String token
+    ) {
+        String tokenToValidate = authorizationHeader != null ? authorizationHeader : token;
+
+        return ResponseEntity
+                .ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(authService.validateToken(tokenToValidate));
     }
 }
