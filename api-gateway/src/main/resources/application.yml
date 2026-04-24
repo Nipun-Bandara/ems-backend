@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: api-gateway
+  profiles:
+    active: development
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: identity-service
+              uri: http://localhost:8081
+              predicates:
+                - Path=/api/auth/**
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOrigins: "http://localhost:3000"
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+                allowedHeaders: "*"
+
+server:
+  port: 8080
+
+
