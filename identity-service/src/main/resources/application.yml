@@ -5,7 +5,5 @@ spring:
     active: development
 
 server:
-  servlet:
-    context-path: /identity-service
-  port: 8082
+  port: 8081
 

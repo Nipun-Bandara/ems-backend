@@ -1,4 +1,4 @@
- spring:
+spring:
   config:
     import: optional:file:./identity-service/.env.staging[.properties],optional:file:.env.staging[.properties]
   datasource:
@@ -20,3 +20,9 @@
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+      expiration: ${JWT_EXPIRATION}
