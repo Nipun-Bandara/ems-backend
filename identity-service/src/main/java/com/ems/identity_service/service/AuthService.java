@@ -13,4 +13,6 @@ public interface AuthService {
     AuthResponse getCurrentUser();
 
     TokenValidationResponse validateToken(String token);
+
+    AuthResponse refreshToken(com.ems.identity_service.dto.request.RefreshTokenRequest request);
 }

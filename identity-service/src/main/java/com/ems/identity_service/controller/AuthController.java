@@ -36,6 +36,15 @@ public class AuthController {
                 .body(authService.login(request));
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refreshToken(
+            @Valid @RequestBody com.ems.identity_service.dto.request.RefreshTokenRequest request) {
+        return ResponseEntity
+                .ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(authService.refreshToken(request));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<AuthResponse> getCurrentUser() {
         return ResponseEntity
@@ -47,8 +56,7 @@ public class AuthController {
     @GetMapping("/validate")
     public ResponseEntity<TokenValidationResponse> validateToken(
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @RequestParam(value = "token", required = false) String token
-    ) {
+            @RequestParam(value = "token", required = false) String token) {
         String tokenToValidate = authorizationHeader != null ? authorizationHeader : token;
 
         return ResponseEntity

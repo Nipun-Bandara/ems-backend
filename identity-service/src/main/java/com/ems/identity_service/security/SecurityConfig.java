@@ -83,10 +83,12 @@ public class SecurityConfig {
                             errorResponse.setError("Forbidden");
                             errorResponse.setMessage("You do not have permission to access this resource");
 
-                                response.getWriter().write(toJson(errorResponse));
+                            response.getWriter().write(toJson(errorResponse));
                         }))
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/validate").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/validate",
+                                "/api/auth/refresh")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
