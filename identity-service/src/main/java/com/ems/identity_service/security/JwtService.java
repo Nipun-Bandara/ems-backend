@@ -37,6 +37,10 @@ public class JwtService {
         return extractClaim(token, claims -> claims.get("userId", Long.class));
     }
 
+    public Long extractDepartmentId(String token) {
+        return extractClaim(token, claims -> claims.get("departmentId", Long.class));
+    }
+
     public List<String> extractRoles(String token) {
         Claims claims = extractAllClaims(token);
         @SuppressWarnings("unchecked")
@@ -58,6 +62,9 @@ public class JwtService {
         claims.put("userId", userEntity.getUserId());
         claims.put("username", userEntity.getUsername());
         claims.put("email", userEntity.getEmail());
+        if (userEntity.getDepartment() != null) {
+            claims.put("departmentId", userEntity.getDepartment().getDepartmentId());
+        }
 
         List<String> roles = userEntity.getUserRoles() != null
                 ? userEntity.getUserRoles().stream()
