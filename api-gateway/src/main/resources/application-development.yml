@@ -1,0 +1,17 @@
+spring:
+  config:
+    import: optional:file:./.env.development[.properties],optional:file:./api-gateway/.env.development[.properties]
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: identity-service
+              uri: ${IDENTITY_SERVICE_URL}
+              predicates:
+                - Path=/api/auth/**, /api/users/**, /api/departments/**
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
