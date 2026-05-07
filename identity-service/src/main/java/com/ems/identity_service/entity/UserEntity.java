@@ -40,6 +40,14 @@ public class UserEntity implements UserDetails {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
+    private DepartmentEntity department;
+
+    @Column(name = "is_assigned", nullable = false)
+    @Builder.Default
+    private Boolean isAssigned = false;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<UserRoles> userRoles;
 

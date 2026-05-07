@@ -1,6 +1,7 @@
 package com.ems.identity_service.service.impl;
 
 import com.ems.identity_service.dto.request.LoginRequest;
+import com.ems.identity_service.dto.request.RefreshTokenRequest;
 import com.ems.identity_service.dto.request.RegisterRequest;
 import com.ems.identity_service.dto.response.AuthResponse;
 import com.ems.identity_service.dto.response.TokenValidationResponse;
@@ -19,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -71,23 +73,27 @@ public class AuthServiceImpl implements AuthService {
                                 .build();
                     })
                     .collect(Collectors.toList());
-            
+
             userRolesRepository.saveAll(userRoles);
             savedUser.setUserRoles(userRoles);
         }
 
         String token = jwtService.generateToken(savedUser);
+        String refreshToken = jwtService.generateRefreshToken(savedUser);
 
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .userId(savedUser.getUserId())
                 .email(savedUser.getEmail())
                 .username(savedUser.getUsername())
-                .roles(savedUser.getUserRoles() != null 
-                    ? savedUser.getUserRoles().stream()
-                        .map(ur -> ur.getRole().getRoleName())
-                        .collect(Collectors.toList())
-                    : List.of())
+                .departmentId(savedUser.getDepartment() != null ? savedUser.getDepartment().getDepartmentId() : null)
+                .departmentName(savedUser.getDepartment() != null ? savedUser.getDepartment().getDepartmentName() : null)
+                .roles(savedUser.getUserRoles() != null
+                        ? savedUser.getUserRoles().stream()
+                                .map(ur -> ur.getRole().getRoleName())
+                                .collect(Collectors.toList())
+                        : List.of())
                 .isBanned(savedUser.getIsBanned())
                 .build();
     }
@@ -95,16 +101,14 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse login(LoginRequest request) {
         UserEntity user = userRepository.findByEmail(request.getEmail())
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         try {
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                    user.getUsername(),
-                            request.getPassword()
-                    )
-            );
-        } catch (org.springframework.security.core.AuthenticationException e) {
+                            user.getUsername(),
+                            request.getPassword()));
+        } catch (AuthenticationException e) {
             throw new IllegalArgumentException("Email or password is incorrect");
         }
 
@@ -118,12 +122,16 @@ public class AuthServiceImpl implements AuthService {
         user.setUserRoles(userRoles);
 
         String token = jwtService.generateToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
 
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
+                .departmentId(user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
+                .departmentName(user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
                 .roles(userRoles.stream()
                         .map(ur -> ur.getRole().getRoleName())
                         .collect(Collectors.toList()))
@@ -135,7 +143,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     public AuthResponse getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        
+
         if (auth == null || !auth.isAuthenticated()) {
             throw new IllegalArgumentException("User not authenticated");
         }
@@ -154,6 +162,8 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
+                .departmentId(user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
+                .departmentName(user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
                 .roles(userRoles.stream()
                         .map(ur -> ur.getRole().getRoleName())
                         .collect(Collectors.toList()))
@@ -197,5 +207,46 @@ public class AuthServiceImpl implements AuthService {
         }
 
         return token;
+    }
+
+    @Override
+    public AuthResponse refreshToken(RefreshTokenRequest request) {
+        String requestRefreshToken = request.getRefreshToken();
+        String username = jwtService.extractUsername(requestRefreshToken);
+
+        if (username != null) {
+            UserEntity user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            // Check if token is valid
+            if (jwtService.isTokenValid(requestRefreshToken, user)) {
+
+                // Optional: Check if banned
+                if (user.getIsBanned()) {
+                    throw new AccountBannedException("Your account has been banned from the system");
+                }
+
+                // Generate new access token
+                String token = jwtService.generateToken(user);
+
+                // Load roles
+                List<UserRoles> userRoles = userRolesRepository.findByUser_UserId(user.getUserId());
+
+                return AuthResponse.builder()
+                        .token(token)
+                        .refreshToken(requestRefreshToken) // Return the same refresh token, or generate a new one
+                        .userId(user.getUserId())
+                        .email(user.getEmail())
+                        .username(user.getUsername())
+                        .departmentId(user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
+                        .departmentName(user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                        .roles(userRoles.stream()
+                                .map(ur -> ur.getRole().getRoleName())
+                                .collect(Collectors.toList()))
+                        .isBanned(user.getIsBanned())
+                        .build();
+            }
+        }
+        throw new InvalidTokenException("Invalid refresh token");
     }
 }

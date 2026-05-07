@@ -1,25 +1,23 @@
 package com.ems.identity_service.dto.response;
 
 import com.ems.identity_service.enums.Role;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.util.List;
 
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class AuthResponse {
-    private String token;
-    private String refreshToken;
+@Builder
+public class UserResponse {
+
     private Long userId;
-    private String email;
     private String username;
+    private String email;
     private Long departmentId;
     private String departmentName;
+    private Boolean isAssigned;
     private List<Role> roles;
     private Boolean isBanned;
 }

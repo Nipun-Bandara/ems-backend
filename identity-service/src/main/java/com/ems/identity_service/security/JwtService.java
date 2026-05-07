@@ -4,11 +4,11 @@ import com.ems.identity_service.entity.UserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
-
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
@@ -26,12 +26,19 @@ public class JwtService {
     @Value("${app.security.jwt.expiration}")
     private long jwtExpiration;
 
+    @Value("${app.security.jwt.refresh-expiration}")
+    private long refreshExpiration;
+
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
     public Long extractUserId(String token) {
         return extractClaim(token, claims -> claims.get("userId", Long.class));
+    }
+
+    public Long extractDepartmentId(String token) {
+        return extractClaim(token, claims -> claims.get("departmentId", Long.class));
     }
 
     public List<String> extractRoles(String token) {
@@ -55,19 +62,30 @@ public class JwtService {
         claims.put("userId", userEntity.getUserId());
         claims.put("username", userEntity.getUsername());
         claims.put("email", userEntity.getEmail());
-        
-        List<String> roles = userEntity.getUserRoles() != null 
-            ? userEntity.getUserRoles().stream()
-                .map(ur -> ur.getRole().getRoleName().name())
-                .collect(Collectors.toList())
-            : List.of();
+        if (userEntity.getDepartment() != null) {
+            claims.put("departmentId", userEntity.getDepartment().getDepartmentId());
+        }
+
+        List<String> roles = userEntity.getUserRoles() != null
+                ? userEntity.getUserRoles().stream()
+                        .map(ur -> ur.getRole().getRoleName().name())
+                        .collect(Collectors.toList())
+                : List.of();
         claims.put("roles", roles);
-        
+
         return buildToken(claims, userEntity.getUsername(), jwtExpiration);
     }
 
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
         return buildToken(extraClaims, userDetails.getUsername(), jwtExpiration);
+    }
+
+    public String generateRefreshToken(UserDetails userDetails) {
+        return buildToken(new HashMap<>(), userDetails.getUsername(), refreshExpiration);
+    }
+
+    public String generateRefreshToken(UserEntity userEntity) {
+        return buildToken(new HashMap<>(), userEntity.getUsername(), refreshExpiration);
     }
 
     private String buildToken(Map<String, Object> extraClaims, String subject, long expiration) {
@@ -102,7 +120,7 @@ public class JwtService {
     }
 
     private Key getSignInKey() {
-        byte[] keyBytes = io.jsonwebtoken.io.Decoders.BASE64.decode(secretKey);
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
