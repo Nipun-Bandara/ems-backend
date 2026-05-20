@@ -22,9 +22,9 @@ public class AuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         String method = request.getMethod();
-        return "OPTIONS".equalsIgnoreCase(method) || 
-               path.startsWith("/api/auth/login") || 
-               path.startsWith("/api/auth/register");
+        return "OPTIONS".equalsIgnoreCase(method) ||
+                path.startsWith("/api/auth/login") ||
+                path.startsWith("/api/auth/register");
     }
 
     @Override

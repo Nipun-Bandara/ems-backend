@@ -91,8 +91,8 @@ public class AuthServiceImpl implements AuthService {
                 .departmentName(savedUser.getDepartment() != null ? savedUser.getDepartment().getDepartmentName() : null)
                 .roles(savedUser.getUserRoles() != null
                         ? savedUser.getUserRoles().stream()
-                                .map(ur -> ur.getRole().getRoleName())
-                                .collect(Collectors.toList())
+                        .map(ur -> ur.getRole().getRoleName())
+                        .collect(Collectors.toList())
                         : List.of())
                 .isBanned(savedUser.getIsBanned())
                 .build();

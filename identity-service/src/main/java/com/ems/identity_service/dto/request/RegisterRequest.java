@@ -1,14 +1,14 @@
 package com.ems.identity_service.dto.request;
 
 import com.ems.identity_service.enums.Role;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Email;
 
 @Data
 @Builder

@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @Builder
 public class UserRoles {
 
-    
+
     @Id
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

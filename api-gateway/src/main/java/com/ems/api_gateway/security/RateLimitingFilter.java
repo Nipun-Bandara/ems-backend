@@ -16,12 +16,11 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class RateLimitingFilter extends OncePerRequestFilter {
 
+    private static final long TIME_WINDOW_MS = TimeUnit.MINUTES.toMillis(1);
+    private static final int MAX_REQUESTS_PER_WINDOW = 50; // Max 50 requests per minute
     // Simple in-memory rate limiter using a map: IP -> array [timestamp,
     // requestCount]
     private final ConcurrentHashMap<String, long[]> requestCountsPerIp = new ConcurrentHashMap<>();
-
-    private static final long TIME_WINDOW_MS = TimeUnit.MINUTES.toMillis(1);
-    private static final int MAX_REQUESTS_PER_WINDOW = 50; // Max 50 requests per minute
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -32,7 +31,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         requestCountsPerIp.compute(clientIp, (ip, data) -> {
             if (data == null || currentTime - data[0] > TIME_WINDOW_MS) {
                 // First request or window expired, reset
-                return new long[] { currentTime, 1 };
+                return new long[]{currentTime, 1};
             } else {
                 // Increment counter
                 data[1]++;

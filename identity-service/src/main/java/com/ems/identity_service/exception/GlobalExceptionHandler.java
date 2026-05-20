@@ -81,8 +81,8 @@ public class GlobalExceptionHandler {
     // ───────────────────────────────────────────────────────────
 
     private ResponseEntity<ErrorResponse> buildResponse(HttpStatus status,
-            String error,
-            String message) {
+                                                        String error,
+                                                        String message) {
         ErrorResponse body = new ErrorResponse();
         body.setStatus(status.value());
         body.setError(error);

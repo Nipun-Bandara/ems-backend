@@ -1,5 +1,7 @@
 package com.ems.identity_service.security;
 
+import com.ems.identity_service.repository.UserRepository;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,13 +10,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import com.ems.identity_service.repository.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import io.jsonwebtoken.JwtException;
 
 import java.io.IOException;
 import java.util.List;
@@ -51,15 +51,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             final String jwt = authHeader.substring(7);
             final String username = jwtService.extractUsername(jwt);
             final List<SimpleGrantedAuthority> authorities = jwtService.extractRoles(jwt).stream()
-                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                .toList();
+                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                    .toList();
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userRepository.findByUsername(username)
                         .orElseThrow(() -> new UsernameNotFoundException("User not found"));
                 if (jwtService.isTokenValid(jwt, userDetails)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                    userDetails, null, authorities);
+                            userDetails, null, authorities);
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
