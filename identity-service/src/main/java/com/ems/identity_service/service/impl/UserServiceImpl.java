@@ -1,7 +1,9 @@
 package com.ems.identity_service.service.impl;
 
 import com.ems.identity_service.dto.request.AssignRoleAndDepartmentRequest;
-import com.ems.identity_service.dto.response.UserResponse;
+import com.ems.identity_service.dto.request.UsersRequest;
+import com.ems.identity_service.dto.response.PaginatedUserResponse;
+import com.ems.identity_service.dto.response.UserRecord;
 import com.ems.identity_service.entity.DepartmentEntity;
 import com.ems.identity_service.entity.RoleEntity;
 import com.ems.identity_service.entity.UserEntity;
@@ -12,6 +14,9 @@ import com.ems.identity_service.repository.UserRepository;
 import com.ems.identity_service.repository.UserRolesRepository;
 import com.ems.identity_service.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -33,17 +38,7 @@ public class UserServiceImpl implements UserService {
     private final DepartmentRepository departmentRepository;
 
     @Override
-    @Transactional(readOnly = true)
-    public List<UserResponse> getUnassignedUsers() {
-        List<UserEntity> unassignedUsers = userRepository.findByIsAssignedFalse();
-        return unassignedUsers.stream()
-                .map(this::convertToUserResponse)
-                .collect(Collectors.toList());
-    }
-
-
-    @Override
-    public UserResponse assignRoleAndDepartment(Long userId, AssignRoleAndDepartmentRequest request) {
+    public UserRecord assignRoleAndDepartment(Long userId, AssignRoleAndDepartmentRequest request) {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
 
@@ -82,9 +77,7 @@ public class UserServiceImpl implements UserService {
                 user.setDepartment(department);
                 user.setIsAssigned(true);
             }
-        }
-        
-        else if (isDepartmentHead) {
+        } else if (isDepartmentHead) {
             if (request.getRole() == null) {
                 throw new IllegalArgumentException("Department Head can only assign role. Role field is required.");
             }
@@ -115,34 +108,58 @@ public class UserServiceImpl implements UserService {
         }
 
         UserEntity updatedUser = userRepository.save(user);
-        return convertToUserResponse(updatedUser);
+        return convertToUserRecord(updatedUser);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponse getUserById(Long userId) {
+    public UserRecord getUserById(Long userId) {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
-        return convertToUserResponse(user);
+        return convertToUserRecord(user);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<UserResponse> getAllUsers() {
-        List<UserEntity> users = userRepository.findAll();
-        return users.stream()
-                .map(this::convertToUserResponse)
-                .collect(Collectors.toList());
+    public PaginatedUserResponse getUsers(UsersRequest usersRequest) {
+
+        Pageable pageable = PageRequest.of(usersRequest.getPage(), usersRequest.getLimit());
+        if (usersRequest.getAssigned()) {
+
+            Page<UserEntity> usersPage = userRepository.findAll(pageable);
+
+            List<UserRecord> users = usersPage.getContent().stream()
+                    .map(this::convertToUserRecord)
+                    .collect(Collectors.toList());
+
+            return PaginatedUserResponse.builder()
+                    .users(users)
+                    .hasNext(usersPage.hasNext())
+                    .hasPrevious(usersPage.hasPrevious())
+                    .build();
+
+        } else {
+            Page<UserEntity> assignedUsersPage = userRepository.findByIsAssignedFalse(pageable);
+            List<UserRecord> users = assignedUsersPage.getContent().stream()
+                    .map(this::convertToUserRecord)
+                    .collect(Collectors.toList());
+            return PaginatedUserResponse.builder()
+                    .users(users)
+                    .hasNext(assignedUsersPage.hasNext())
+                    .hasPrevious(assignedUsersPage.hasPrevious())
+                    .build();
+        }
+
     }
 
-    private UserResponse convertToUserResponse(UserEntity user) {
+    private UserRecord convertToUserRecord(UserEntity user) {
         List<com.ems.identity_service.enums.Role> roles = user.getUserRoles() != null
                 ? user.getUserRoles().stream()
-                        .map(ur -> ur.getRole().getRoleName())
-                        .collect(Collectors.toList())
+                .map(ur -> ur.getRole().getRoleName())
+                .collect(Collectors.toList())
                 : List.of();
 
-        return UserResponse.builder()
+        return UserRecord.builder()
                 .userId(user.getUserId())
                 .username(user.getUsername())
                 .email(user.getEmail())

@@ -10,7 +10,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UserResponse {
+public class UserRecord {
 
     private Long userId;
     private String username;
