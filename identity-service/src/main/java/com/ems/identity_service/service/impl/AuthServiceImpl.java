@@ -16,6 +16,9 @@ import com.ems.identity_service.repository.UserRolesRepository;
 import com.ems.identity_service.security.JwtService;
 import com.ems.identity_service.service.AuthService;
 import io.jsonwebtoken.JwtException;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,10 +29,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -64,7 +63,8 @@ public class AuthServiceImpl implements AuthService {
         if (request.getRoles() != null && !request.getRoles().isEmpty()) {
             List<UserRoles> userRoles = request.getRoles().stream()
                     .map(roleName -> {
-                        RoleEntity role = roleRepository.findByRoleName(roleName)
+                        RoleEntity role = roleRepository
+                                .findByRoleName(roleName)
                                 .orElseThrow(() -> new IllegalArgumentException("Role not found: " + roleName));
                         return UserRoles.builder()
                                 .user(savedUser)
@@ -87,27 +87,33 @@ public class AuthServiceImpl implements AuthService {
                 .userId(savedUser.getUserId())
                 .email(savedUser.getEmail())
                 .username(savedUser.getUsername())
-                .departmentId(savedUser.getDepartment() != null ? savedUser.getDepartment().getDepartmentId() : null)
-                .departmentName(savedUser.getDepartment() != null ? savedUser.getDepartment().getDepartmentName() : null)
-                .roles(savedUser.getUserRoles() != null
-                        ? savedUser.getUserRoles().stream()
-                        .map(ur -> ur.getRole().getRoleName())
-                        .collect(Collectors.toList())
-                        : List.of())
+                .departmentId(
+                        savedUser.getDepartment() != null
+                                ? savedUser.getDepartment().getDepartmentId()
+                                : null)
+                .departmentName(
+                        savedUser.getDepartment() != null
+                                ? savedUser.getDepartment().getDepartmentName()
+                                : null)
+                .roles(
+                        savedUser.getUserRoles() != null
+                                ? savedUser.getUserRoles().stream()
+                                        .map(ur -> ur.getRole().getRoleName())
+                                        .collect(Collectors.toList())
+                                : List.of())
                 .isBanned(savedUser.getIsBanned())
                 .build();
     }
 
     @Override
     public AuthResponse login(LoginRequest request) {
-        UserEntity user = userRepository.findByEmail(request.getEmail())
+        UserEntity user = userRepository
+                .findByEmail(request.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            user.getUsername(),
-                            request.getPassword()));
+                    new UsernamePasswordAuthenticationToken(user.getUsername(), request.getPassword()));
         } catch (AuthenticationException e) {
             throw new IllegalArgumentException("Email or password is incorrect");
         }
@@ -130,11 +136,11 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
-                .departmentId(user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                .departmentName(user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
-                .roles(userRoles.stream()
-                        .map(ur -> ur.getRole().getRoleName())
-                        .collect(Collectors.toList()))
+                .departmentId(
+                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
+                .departmentName(
+                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .roles(userRoles.stream().map(ur -> ur.getRole().getRoleName()).collect(Collectors.toList()))
                 .isBanned(user.getIsBanned())
                 .build();
     }
@@ -148,7 +154,8 @@ public class AuthServiceImpl implements AuthService {
             throw new IllegalArgumentException("User not authenticated");
         }
 
-        UserEntity user = userRepository.findByUsername(auth.getName())
+        UserEntity user = userRepository
+                .findByUsername(auth.getName())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         if (user.getIsBanned()) {
@@ -162,11 +169,11 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
-                .departmentId(user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                .departmentName(user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
-                .roles(userRoles.stream()
-                        .map(ur -> ur.getRole().getRoleName())
-                        .collect(Collectors.toList()))
+                .departmentId(
+                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
+                .departmentName(
+                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .roles(userRoles.stream().map(ur -> ur.getRole().getRoleName()).collect(Collectors.toList()))
                 .isBanned(user.getIsBanned())
                 .build();
     }
@@ -184,10 +191,7 @@ public class AuthServiceImpl implements AuthService {
                 throw new InvalidTokenException("Invalid token: missing user ID claim");
             }
 
-            return TokenValidationResponse.builder()
-                    .userId(userId)
-                    .roles(roles)
-                    .build();
+            return TokenValidationResponse.builder().userId(userId).roles(roles).build();
         } catch (JwtException | IllegalArgumentException ex) {
             throw new InvalidTokenException("Invalid or expired token");
         }
@@ -215,7 +219,8 @@ public class AuthServiceImpl implements AuthService {
         String username = jwtService.extractUsername(requestRefreshToken);
 
         if (username != null) {
-            UserEntity user = userRepository.findByUsername(username)
+            UserEntity user = userRepository
+                    .findByUsername(username)
                     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
             // Check if token is valid
@@ -238,8 +243,14 @@ public class AuthServiceImpl implements AuthService {
                         .userId(user.getUserId())
                         .email(user.getEmail())
                         .username(user.getUsername())
-                        .departmentId(user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                        .departmentName(user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                        .departmentId(
+                                user.getDepartment() != null
+                                        ? user.getDepartment().getDepartmentId()
+                                        : null)
+                        .departmentName(
+                                user.getDepartment() != null
+                                        ? user.getDepartment().getDepartmentName()
+                                        : null)
                         .roles(userRoles.stream()
                                 .map(ur -> ur.getRole().getRoleName())
                                 .collect(Collectors.toList()))

@@ -1,14 +1,13 @@
 package com.ems.identity_service.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import lombok.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
-
-import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -58,9 +57,11 @@ public class UserEntity implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return userRoles != null ? userRoles.stream()
-                .map(ur -> new SimpleGrantedAuthority("ROLE_" + ur.getRole().getRoleName().name()))
-                .toList()
+        return userRoles != null
+                ? userRoles.stream()
+                        .map(ur -> new SimpleGrantedAuthority(
+                                "ROLE_" + ur.getRole().getRoleName().name()))
+                        .toList()
                 : List.of();
     }
 

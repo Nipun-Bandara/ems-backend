@@ -1,8 +1,7 @@
 package com.ems.identity_service.dto.response;
 
-import lombok.*;
-
 import java.time.LocalDateTime;
+import lombok.*;
 
 @Getter
 @Setter

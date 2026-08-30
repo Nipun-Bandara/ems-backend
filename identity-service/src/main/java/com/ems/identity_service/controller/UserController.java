@@ -21,30 +21,21 @@ public class UserController {
 
     @PostMapping
     @PreAuthorize("hasRole('DEPARTMENT_HEAD') or hasRole('SYSTEM_ADMIN')")
-    public ResponseEntity<PaginatedUserResponse> getUsers(
-            @Valid @RequestBody UsersRequest usersRequest) {
+    public ResponseEntity<PaginatedUserResponse> getUsers(@Valid @RequestBody UsersRequest usersRequest) {
 
-        return ResponseEntity
-                .ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(userService.getUsers(usersRequest));
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(userService.getUsers(usersRequest));
     }
 
     @GetMapping("/{userId}")
     public ResponseEntity<UserRecord> getUserById(@PathVariable Long userId) {
-        return ResponseEntity
-                .ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(userService.getUserById(userId));
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(userService.getUserById(userId));
     }
 
     @PutMapping("/{userId}/assignment")
     @PreAuthorize("hasRole('DEPARTMENT_HEAD') or hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<UserRecord> assignRoleAndDepartment(
-            @PathVariable Long userId,
-            @Valid @RequestBody AssignRoleAndDepartmentRequest request) {
-        return ResponseEntity
-                .ok()
+            @PathVariable Long userId, @Valid @RequestBody AssignRoleAndDepartmentRequest request) {
+        return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(userService.assignRoleAndDepartment(userId, request));
     }

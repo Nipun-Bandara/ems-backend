@@ -5,7 +5,6 @@ import com.ems.identity_service.dto.request.RegisterRequest;
 import com.ems.identity_service.dto.response.AuthResponse;
 import com.ems.identity_service.dto.response.TokenValidationResponse;
 import com.ems.identity_service.service.AuthService;
-
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,35 +21,25 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
+        return ResponseEntity.status(HttpStatus.CREATED)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(authService.register(request));
     }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity
-                .ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(authService.login(request));
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.login(request));
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refreshToken(
             @Valid @RequestBody com.ems.identity_service.dto.request.RefreshTokenRequest request) {
-        return ResponseEntity
-                .ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(authService.refreshToken(request));
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.refreshToken(request));
     }
 
     @GetMapping("/me")
     public ResponseEntity<AuthResponse> getCurrentUser() {
-        return ResponseEntity
-                .ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(authService.getCurrentUser());
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.getCurrentUser());
     }
 
     @GetMapping("/validate")
@@ -59,8 +48,7 @@ public class AuthController {
             @RequestParam(value = "token", required = false) String token) {
         String tokenToValidate = authorizationHeader != null ? authorizationHeader : token;
 
-        return ResponseEntity
-                .ok()
+        return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(authService.validateToken(tokenToValidate));
     }

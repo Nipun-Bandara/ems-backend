@@ -1,9 +1,8 @@
 package com.ems.identity_service.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.LocalDateTime;
+import lombok.*;
 
 @Entity
 @Table(name = "departments")
