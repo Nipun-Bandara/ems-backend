@@ -1,3 +1,6 @@
+# Maven build output (the aggregator builds at the repo root too)
+target/
+
 # VS Code
 .vscode/
 
