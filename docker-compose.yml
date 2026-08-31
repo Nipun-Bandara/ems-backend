@@ -1,0 +1,130 @@
+# Local development infrastructure for ems-backend.
+#
+#     docker compose up -d      # start everything
+#     docker compose ps         # all services should report (healthy)
+#     docker compose down       # stop, keeping data
+#     docker compose down -v    # stop and wipe data (re-runs db/init.sql)
+#
+# Nothing here is a secret. These credentials exist only to make a laptop
+# stack work out of the box and are deliberately committed; real environments
+# get their values from the deployment platform, never from this file.
+
+name: ems
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: ems-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ems
+      POSTGRES_PASSWORD: ems_local_dev
+      POSTGRES_DB: ems
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates one database per service on first start. See db/init.sql.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - ems-network
+    healthcheck:
+      # -h 127.0.0.1 on purpose: during initdb the entrypoint runs a temporary
+      # server on the unix socket only, so a TCP probe cannot report healthy
+      # until init.sql has finished and the real server is accepting clients.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ems -d ems"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: ems-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ems
+      RABBITMQ_DEFAULT_PASS: ems_local_dev
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # management UI -> http://localhost:15672
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - ems-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ems-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - ems-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    container_name: ems-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ems_minio
+      MINIO_ROOT_PASSWORD: ems_local_dev
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # console UI -> http://localhost:9001
+    volumes:
+      - minio-data:/data
+    networks:
+      - ems-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ems-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # web inbox -> http://localhost:8025
+    networks:
+      - ems-network
+    # No volume by design: MailHog keeps mail in memory, and a throwaway local
+    # inbox is not worth persisting. Its maildir backend needs a writable,
+    # correctly-owned mount that would only add setup friction here.
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:
+  minio-data:
+
+networks:
+  ems-network:
+    driver: bridge
