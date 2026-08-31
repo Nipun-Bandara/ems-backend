@@ -1,9 +1,8 @@
 package com.ems.identity_service.dto.response;
 
 import com.ems.identity_service.enums.Role;
-import lombok.*;
-
 import java.util.List;
+import lombok.*;
 
 @Getter
 @Setter

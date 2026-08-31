@@ -1,9 +1,8 @@
 package com.ems.identity_service.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.LocalDateTime;
+import lombok.*;
 
 @Entity
 @Table(name = "user_roles")
@@ -14,7 +13,6 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class UserRoles {
-
 
     @Id
     @ManyToOne(fetch = FetchType.LAZY)

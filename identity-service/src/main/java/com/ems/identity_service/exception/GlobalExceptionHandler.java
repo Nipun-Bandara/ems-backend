@@ -2,15 +2,14 @@ package com.ems.identity_service.exception;
 
 import com.ems.identity_service.dto.response.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -73,16 +72,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleException(Exception ex) {
         ex.printStackTrace();
-        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error",
+        return buildResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
                 ex.getMessage() != null ? ex.getMessage() : "An unexpected error occurred");
     }
 
     // ─── Shared builder
     // ───────────────────────────────────────────────────────────
 
-    private ResponseEntity<ErrorResponse> buildResponse(HttpStatus status,
-                                                        String error,
-                                                        String message) {
+    private ResponseEntity<ErrorResponse> buildResponse(HttpStatus status, String error, String message) {
         ErrorResponse body = new ErrorResponse();
         body.setStatus(status.value());
         body.setError(error);

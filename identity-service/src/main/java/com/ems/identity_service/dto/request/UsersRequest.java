@@ -7,5 +7,4 @@ public class UsersRequest {
     private Boolean assigned = true;
     private int page;
     private int limit;
-
 }
