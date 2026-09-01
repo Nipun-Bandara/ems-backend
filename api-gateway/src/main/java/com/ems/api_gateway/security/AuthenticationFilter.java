@@ -1,6 +1,6 @@
 package com.ems.api_gateway.security;
 
-import com.ems.api_gateway.dto.response.ErrorResponse;
+import com.ems.common.error.ErrorResponseWriter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,12 +10,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 @RequiredArgsConstructor
 public class AuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -36,38 +38,26 @@ public class AuthenticationFilter extends OncePerRequestFilter {
             try {
                 jwtUtil.validateToken(token);
             } catch (Exception e) {
-                writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized", "Unauthorized: Invalid Token");
+                ErrorResponseWriter.write(
+                        objectMapper,
+                        request,
+                        response,
+                        HttpStatus.UNAUTHORIZED,
+                        "Unauthorized",
+                        "Unauthorized: Invalid Token");
                 return;
             }
         } else {
-            writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized", "Unauthorized: Missing Token");
+            ErrorResponseWriter.write(
+                    objectMapper,
+                    request,
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "Unauthorized",
+                    "Unauthorized: Missing Token");
             return;
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    private void writeError(HttpServletResponse response, HttpStatus status, String error, String message)
-            throws IOException {
-        response.setStatus(status.value());
-        response.setContentType("application/json");
-
-        ErrorResponse errorResponse = new ErrorResponse();
-        errorResponse.setStatus(status.value());
-        errorResponse.setError(error);
-        errorResponse.setMessage(message);
-
-        String body = "{\"status\":" + errorResponse.getStatus()
-                + ",\"error\":\"" + escapeJson(errorResponse.getError())
-                + "\",\"message\":\"" + escapeJson(errorResponse.getMessage())
-                + "\"}";
-        response.getWriter().write(body);
-    }
-
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
