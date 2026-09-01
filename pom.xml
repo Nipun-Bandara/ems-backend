@@ -17,6 +17,7 @@
     <description>EMS backend aggregator</description>
 
     <modules>
+        <module>ems-common</module>
         <module>api-gateway</module>
         <module>identity-service</module>
     </modules>
@@ -31,6 +32,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.ems</groupId>
+                <artifactId>ems-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
