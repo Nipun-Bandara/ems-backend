@@ -3,24 +3,22 @@ package com.ems.identity_service.security;
 import com.ems.identity_service.entity.UserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.crypto.SecretKey;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class JwtService {
 
-    @Value("${app.security.jwt.secret}")
-    private String secretKey;
+    private final RsaKeyProvider rsaKeyProvider;
 
     @Value("${app.security.jwt.expiration}")
     private long jwtExpiration;
@@ -89,11 +87,16 @@ public class JwtService {
 
     private String buildToken(Map<String, Object> extraClaims, String subject, long expiration) {
         return Jwts.builder()
+                // The kid lets a verifier pick the right key out of the JWK Set, and lets us roll
+                // the key over without a flag day.
+                .header()
+                .keyId(rsaKeyProvider.getKeyId())
+                .and()
                 .claims(extraClaims)
                 .subject(subject)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(getSignInKey(), Jwts.SIG.HS256)
+                .signWith(rsaKeyProvider.getPrivateKey(), Jwts.SIG.RS256)
                 .compact();
     }
 
@@ -112,14 +115,9 @@ public class JwtService {
 
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSignInKey())
+                .verifyWith(rsaKeyProvider.getPublicKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-    }
-
-    private SecretKey getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        return Keys.hmacShaKeyFor(keyBytes);
     }
 }

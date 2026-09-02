@@ -13,3 +13,6 @@ target/
 
 # ...except the committed templates, which hold only local-compose defaults.
 !**/.env.example
+
+# JWT signing keys (identity-service reads these from JWT_*_KEY_PATH)
+*.pem

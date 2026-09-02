@@ -13,6 +13,7 @@ import com.ems.identity_service.exception.InvalidTokenException;
 import com.ems.identity_service.repository.RoleRepository;
 import com.ems.identity_service.repository.UserRepository;
 import com.ems.identity_service.repository.UserRolesRepository;
+import com.ems.identity_service.security.AuthenticatedUser;
 import com.ems.identity_service.security.JwtService;
 import com.ems.identity_service.service.AuthService;
 import io.jsonwebtoken.JwtException;
@@ -149,14 +150,10 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     public AuthResponse getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Long userId = AuthenticatedUser.requireUserId(auth);
 
-        if (auth == null || !auth.isAuthenticated()) {
-            throw new IllegalArgumentException("User not authenticated");
-        }
-
-        UserEntity user = userRepository
-                .findByUsername(auth.getName())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        UserEntity user =
+                userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         if (user.getIsBanned()) {
             throw new AccountBannedException("Your account has been banned from the system");

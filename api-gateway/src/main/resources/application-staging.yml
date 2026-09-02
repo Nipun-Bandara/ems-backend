@@ -20,4 +20,6 @@ spring:
 app:
   security:
     jwt:
-      secret: ${JWT_SECRET}
+      # identity-service's JWK Set. The gateway fetches and caches it; there is no
+      # shared secret to keep in step any more.
+      jwks-uri: ${JWKS_URI}

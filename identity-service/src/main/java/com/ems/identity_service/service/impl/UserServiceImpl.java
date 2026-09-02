@@ -12,6 +12,7 @@ import com.ems.identity_service.repository.DepartmentRepository;
 import com.ems.identity_service.repository.RoleRepository;
 import com.ems.identity_service.repository.UserRepository;
 import com.ems.identity_service.repository.UserRolesRepository;
+import com.ems.identity_service.security.AuthenticatedUser;
 import com.ems.identity_service.service.UserService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -44,7 +45,7 @@ public class UserServiceImpl implements UserService {
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UserEntity authUser = userRepository
-                .findByUsername(authentication.getName())
+                .findById(AuthenticatedUser.requireUserId(authentication))
                 .orElseThrow(() -> new IllegalArgumentException("Authenticated user not found"));
 
         boolean isSystemAdmin = authentication.getAuthorities().stream()
