@@ -10,12 +10,6 @@ spring:
               uri: ${IDENTITY_SERVICE_URL}
               predicates:
                 - Path=/api/auth/**, /api/users/**, /api/departments/**
-          globalcors:
-            cors-configurations:
-              '[/**]':
-                allowedOrigins: ${ALLOWED_ORIGINS}
-                allowedMethods: "*"
-                allowedHeaders: "*"
 
 app:
   security:

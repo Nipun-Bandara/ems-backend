@@ -11,9 +11,11 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.ObjectMapper;
 
@@ -25,6 +27,7 @@ import tools.jackson.databind.ObjectMapper;
  * client-supplied identity headers.
  */
 @Component
+@Order(2)
 @RequiredArgsConstructor
 public class AuthenticationFilter extends OncePerRequestFilter {
 
@@ -33,6 +36,21 @@ public class AuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String USER_ID_CLAIM = "userId";
     private static final String ROLES_CLAIM = "roles";
+
+    /**
+     * Endpoints reachable without a valid access token. Matched as Ant patterns, not prefixes: a
+     * refresh carries an access token that has already expired, so it has to be exempt, while
+     * {@code /api/auth/loginfoo} must not inherit the exemption of {@code /api/auth/login}.
+     */
+    private static final List<String> PUBLIC_PATHS = List.of(
+            "/api/auth/login",
+            "/api/auth/register",
+            "/api/auth/refresh",
+            "/api/auth/validate",
+            "/.well-known/**",
+            "/actuator/health/**");
+
+    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     private final JwtTokenValidator jwtTokenValidator;
     private final ObjectMapper objectMapper;
@@ -73,10 +91,11 @@ public class AuthenticationFilter extends OncePerRequestFilter {
     }
 
     private static boolean isPublic(HttpServletRequest request) {
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         String path = request.getRequestURI();
-        return "OPTIONS".equalsIgnoreCase(request.getMethod())
-                || path.startsWith("/api/auth/login")
-                || path.startsWith("/api/auth/register");
+        return PUBLIC_PATHS.stream().anyMatch(pattern -> PATH_MATCHER.match(pattern, path));
     }
 
     /** The claim is a number when identity-service writes it, but read it leniently. */
