@@ -24,6 +24,9 @@ spring:
 app:
   security:
     jwt:
-      secret: ${JWT_SECRET}
+      # Optional here only: with no keypair on disk the service generates an ephemeral one at
+      # startup and logs a warning. The other profiles require both paths.
+      private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+      public-key-path: ${JWT_PUBLIC_KEY_PATH:}
       expiration: ${JWT_EXPIRATION}
       refresh-expiration: ${JWT_REFRESH_EXPIRATION}

@@ -1,6 +1,7 @@
 package com.ems.identity_service.security;
 
 import com.ems.common.error.ErrorResponseWriter;
+import com.ems.common.security.GatewayAuthenticationFilter;
 import com.ems.identity_service.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -29,7 +30,6 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthFilter jwtAuthFilter;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
@@ -77,13 +77,21 @@ public class SecurityConfig {
                                 "Forbidden",
                                 "You do not have permission to access this resource")))
                 .authorizeHttpRequests(auth -> auth.requestMatchers(
-                                "/api/auth/register", "/api/auth/login", "/api/auth/validate", "/api/auth/refresh")
+                                "/api/auth/register",
+                                "/api/auth/login",
+                                "/api/auth/validate",
+                                "/api/auth/refresh",
+                                "/.well-known/jwks.json")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                // Authentication is whatever the gateway already established and forwarded as
+                // headers: no token parsing and no user lookup on the request path. Constructed
+                // here rather than declared as a @Bean, which would also register it with the
+                // servlet container and run it a second time outside this chain.
+                .addFilterBefore(new GatewayAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

@@ -22,21 +22,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 public class GatewayAuthenticationFilter extends OncePerRequestFilter {
 
-    public static final String USER_ID_HEADER = "X-User-Id";
-    public static final String USER_ROLES_HEADER = "X-User-Roles";
-
     private static final String ROLE_PREFIX = "ROLE_";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String userId = request.getHeader(USER_ID_HEADER);
+        String userId = request.getHeader(GatewayHeaders.USER_ID);
 
         if (userId != null
                 && !userId.isBlank()
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    userId, null, toAuthorities(request.getHeader(USER_ROLES_HEADER)));
+                    userId, null, toAuthorities(request.getHeader(GatewayHeaders.USER_ROLES)));
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 

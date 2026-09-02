@@ -24,6 +24,7 @@ spring:
 app:
   security:
     jwt:
-      secret: ${JWT_SECRET}
+      private-key-path: ${JWT_PRIVATE_KEY_PATH}
+      public-key-path: ${JWT_PUBLIC_KEY_PATH}
       expiration: ${JWT_EXPIRATION}
       refresh-expiration: ${JWT_REFRESH_EXPIRATION}

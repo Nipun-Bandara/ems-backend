@@ -8,6 +8,11 @@ at the repo root builds every module.
 | `api-gateway`      | 8080 | Single entry point, JWT check, CORS, rate limiting |
 | `identity-service` | 8081 | Users, roles, departments, authentication          |
 
+The gateway is the only place a token is verified. It swaps the `Authorization`
+header for `X-User-Id` and `X-User-Roles` on the way through, and services
+authenticate on those headers without a token parse or a database lookup — so
+they must not be reachable directly from outside.
+
 ## Running locally
 
 Requires Docker with Compose v2, JDK 21, and Maven 3.8+.
@@ -26,8 +31,18 @@ The templates are filled in with the values from `docker-compose.yml`, so the
 defaults work as-is. `.env.development` is gitignored — keep real credentials
 there and out of `.env.example`.
 
-`JWT_SECRET` must be identical in both files, or the gateway will reject the
-tokens identity-service issues.
+There is no shared secret to line up. identity-service signs tokens RS256 and
+publishes the public half of the key at
+<http://localhost:8081/.well-known/jwks.json>; the gateway verifies against
+that, caching the key set for five minutes and refetching when it sees a `kid`
+it does not know.
+
+In the development profile identity-service generates a keypair at startup if
+`JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` are unset, and logs a warning.
+That is enough to get going, but the keypair does not survive a restart, so
+every token issued before one stops working. Point the two variables at PEM
+files to keep it — see the comments in `identity-service/.env.example`. Every
+other profile requires them.
 
 ### 2. Start the infrastructure
 

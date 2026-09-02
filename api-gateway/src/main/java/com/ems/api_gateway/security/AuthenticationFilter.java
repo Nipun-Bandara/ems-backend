@@ -1,63 +1,108 @@
 package com.ems.api_gateway.security;
 
 import com.ems.common.error.ErrorResponseWriter;
+import com.nimbusds.jwt.JWTClaimsSet;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * The single place a token is verified. Downstream services see only the identity it carried, as
+ * {@code X-User-Id} and {@code X-User-Roles}.
+ *
+ * <p>Every request is wrapped, including the public ones, because the wrapper is also what strips
+ * client-supplied identity headers.
+ */
 @Component
 @RequiredArgsConstructor
 public class AuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtUtil jwtUtil;
-    private final ObjectMapper objectMapper;
+    private static final Logger log = LoggerFactory.getLogger(AuthenticationFilter.class);
 
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        String method = request.getMethod();
-        return "OPTIONS".equalsIgnoreCase(method)
-                || path.startsWith("/api/auth/login")
-                || path.startsWith("/api/auth/register");
-    }
+    private static final String BEARER_PREFIX = "Bearer ";
+    private static final String USER_ID_CLAIM = "userId";
+    private static final String ROLES_CLAIM = "roles";
+
+    private final JwtTokenValidator jwtTokenValidator;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String authHeader = request.getHeader("Authorization");
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            try {
-                jwtUtil.validateToken(token);
-            } catch (Exception e) {
-                ErrorResponseWriter.write(
-                        objectMapper,
-                        request,
-                        response,
-                        HttpStatus.UNAUTHORIZED,
-                        "Unauthorized",
-                        "Unauthorized: Invalid Token");
-                return;
-            }
-        } else {
-            ErrorResponseWriter.write(
-                    objectMapper,
-                    request,
-                    response,
-                    HttpStatus.UNAUTHORIZED,
-                    "Unauthorized",
-                    "Unauthorized: Missing Token");
+        if (isPublic(request)) {
+            filterChain.doFilter(new IdentityHeadersRequest(request, null, null), response);
             return;
         }
 
-        filterChain.doFilter(request, response);
+        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
+            unauthorized(request, response, "Unauthorized: Missing Token");
+            return;
+        }
+
+        JWTClaimsSet claims;
+        try {
+            claims = jwtTokenValidator.validate(authHeader.substring(BEARER_PREFIX.length()));
+        } catch (Exception e) {
+            log.debug("Rejecting {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+            unauthorized(request, response, "Unauthorized: Invalid Token");
+            return;
+        }
+
+        String userId = readUserId(claims);
+        if (userId == null) {
+            log.debug(
+                    "Rejecting {} {}: token has no usable userId claim", request.getMethod(), request.getRequestURI());
+            unauthorized(request, response, "Unauthorized: Invalid Token");
+            return;
+        }
+
+        filterChain.doFilter(new IdentityHeadersRequest(request, userId, readRoles(claims)), response);
+    }
+
+    private static boolean isPublic(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return "OPTIONS".equalsIgnoreCase(request.getMethod())
+                || path.startsWith("/api/auth/login")
+                || path.startsWith("/api/auth/register");
+    }
+
+    /** The claim is a number when identity-service writes it, but read it leniently. */
+    private static String readUserId(JWTClaimsSet claims) {
+        Object userId = claims.getClaim(USER_ID_CLAIM);
+        if (userId == null) {
+            return null;
+        }
+        String value = String.valueOf(userId).trim();
+        return value.isEmpty() ? null : value;
+    }
+
+    private static String readRoles(JWTClaimsSet claims) {
+        List<String> roles;
+        try {
+            roles = claims.getStringListClaim(ROLES_CLAIM);
+        } catch (java.text.ParseException e) {
+            // A token with a malformed roles claim still identifies its user; it just grants
+            // nothing, which every downstream authorization rule already handles.
+            return null;
+        }
+        return roles == null || roles.isEmpty() ? null : String.join(",", roles);
+    }
+
+    private void unauthorized(HttpServletRequest request, HttpServletResponse response, String message)
+            throws IOException {
+        ErrorResponseWriter.write(objectMapper, request, response, HttpStatus.UNAUTHORIZED, "Unauthorized", message);
     }
 }
