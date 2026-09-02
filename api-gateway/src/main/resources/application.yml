@@ -3,6 +3,12 @@ spring:
     name: api-gateway
   profiles:
     active: development
+  data:
+    redis:
+      # Holds RateLimitingFilter's shared counter. Every profile points at the same
+      # two variables; only their values differ per environment.
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: 8080
