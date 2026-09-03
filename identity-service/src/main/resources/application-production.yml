@@ -12,6 +12,9 @@ spring:
       connection-init-sql: "SELECT 1"
       connection-test-query: "SELECT 1"
 
+  flyway:
+    enabled: true
+
   jpa:
     hibernate:
       ddl-auto: none
