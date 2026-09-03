@@ -3,6 +3,7 @@ package com.ems.identity_service.security;
 import com.ems.identity_service.entity.UserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +37,20 @@ public class JwtService {
 
     public Long extractDepartmentId(String token) {
         return extractClaim(token, claims -> claims.get("departmentId", Long.class));
+    }
+
+    /**
+     * When the token was signed. Compared against
+     * {@link UserEntity#getTokensValidFrom()} to reject tokens minted before a password reset.
+     *
+     * <p>{@code iat} is stored with second precision, so a token signed part-way through a
+     * second reads as having been signed at the start of it. That rounding can only make a
+     * token look older than it is, which errs towards refusing a token the reset should have
+     * caught rather than honouring one it should not.
+     */
+    public Instant extractIssuedAt(String token) {
+        Date issuedAt = extractClaim(token, Claims::getIssuedAt);
+        return issuedAt == null ? null : issuedAt.toInstant();
     }
 
     public List<String> extractRoles(String token) {

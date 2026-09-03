@@ -3,6 +3,8 @@ package com.ems.notification_service.messaging;
 import com.ems.common.event.EventEnvelope;
 import com.ems.common.outbox.IdempotentConsumer;
 import com.ems.notification_service.entity.NotificationTemplate;
+import com.ems.notification_service.event.PasswordChangedPayload;
+import com.ems.notification_service.event.PasswordResetRequestedPayload;
 import com.ems.notification_service.event.UserRegisteredPayload;
 import com.ems.notification_service.event.UserVerifiedPayload;
 import com.ems.notification_service.mail.TemplatedMailer;
@@ -58,6 +60,8 @@ public class EventConsumer {
         switch (event.type()) {
             case UserRegisteredPayload.TYPE -> sendVerificationEmail(event);
             case UserVerifiedPayload.TYPE -> sendWelcomeEmail(event);
+            case PasswordResetRequestedPayload.TYPE -> sendPasswordResetEmail(event);
+            case PasswordChangedPayload.TYPE -> sendPasswordChangedEmail(event);
             default -> log.debug("No notification is defined for {}; acknowledging {}", event.type(), event.eventId());
         }
     }
@@ -96,6 +100,50 @@ public class EventConsumer {
     }
 
     /**
+     * The mail a forgot-password request causes. Only ever sent for an address that has an
+     * account: identity-service answers a request for an unknown address identically but
+     * publishes nothing, so there is no case to filter out here.
+     */
+    private void sendPasswordResetEmail(EventEnvelope<JsonNode> event) {
+        PasswordResetRequestedPayload payload =
+                jsonMapper.treeToValue(event.payload(), PasswordResetRequestedPayload.class);
+        mailer.send(
+                NotificationTemplate.PASSWORD_RESET_KEY,
+                payload.email(),
+                Map.of(
+                        "username", payload.username(),
+                        "email", payload.email(),
+                        "resetUrl", resetUrl(payload.resetToken())));
+        // As with the verification token: it is a credential, so the log names the event and
+        // not what was in it.
+        log.info(
+                "Sent password reset link to user {} ({}) from event {}",
+                payload.userId(),
+                payload.email(),
+                event.eventId());
+    }
+
+    /**
+     * The notice a completed reset causes, sent to the address on the account rather than to
+     * whoever performed the reset — if those are not the same person, this mail is the only
+     * thing that tells the owner. Deliberately carries no link: it reports something that has
+     * already happened, and a security notice that asks the reader to click is
+     * indistinguishable from the phishing it warns about.
+     */
+    private void sendPasswordChangedEmail(EventEnvelope<JsonNode> event) {
+        PasswordChangedPayload payload = jsonMapper.treeToValue(event.payload(), PasswordChangedPayload.class);
+        mailer.send(
+                NotificationTemplate.PASSWORD_CHANGED_KEY,
+                payload.email(),
+                Map.of("username", payload.username(), "email", payload.email()));
+        log.info(
+                "Notified user {} ({}) of a password change from event {}",
+                payload.userId(),
+                payload.email(),
+                event.eventId());
+    }
+
+    /**
      * Encoded even though the token is a UUID and has nothing to encode. What arrives here
      * came off the broker, and a value that was not what this service expected must not be
      * able to add query parameters to a link users are told to click.
@@ -103,5 +151,10 @@ public class EventConsumer {
     private String verifyUrl(String verificationToken) {
         return "%s/auth/verify?token=%s"
                 .formatted(frontendUrl, URLEncoder.encode(verificationToken, StandardCharsets.UTF_8));
+    }
+
+    /** Encoded for the same reason as {@link #verifyUrl}. */
+    private String resetUrl(String resetToken) {
+        return "%s/auth/reset?token=%s".formatted(frontendUrl, URLEncoder.encode(resetToken, StandardCharsets.UTF_8));
     }
 }

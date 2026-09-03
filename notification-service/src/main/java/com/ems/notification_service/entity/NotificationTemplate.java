@@ -32,6 +32,12 @@ public class NotificationTemplate {
     /** Key of the template sent once a user has verified their address. */
     public static final String WELCOME_KEY = "user.welcome";
 
+    /** Key of the template carrying the password reset link. */
+    public static final String PASSWORD_RESET_KEY = "user.password-reset";
+
+    /** Key of the notice sent after a password is changed through a reset. */
+    public static final String PASSWORD_CHANGED_KEY = "user.password-changed";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "template_id")

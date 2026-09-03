@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ems.common.event.EventEnvelope;
 import com.ems.notification_service.entity.NotificationTemplate;
+import com.ems.notification_service.event.PasswordChangedPayload;
+import com.ems.notification_service.event.PasswordResetRequestedPayload;
 import com.ems.notification_service.event.UserRegisteredPayload;
 import com.ems.notification_service.event.UserVerifiedPayload;
 import com.ems.notification_service.mail.TemplatedMailer;
@@ -102,6 +104,49 @@ class EventConsumerTest {
         verify(mailer)
                 .send(
                         eq(NotificationTemplate.WELCOME_KEY),
+                        eq("ada@ems.local"),
+                        eq(Map.of("username", "ada", "email", "ada@ems.local")));
+    }
+
+    @Test
+    void sendsTheResetTemplateWithALinkToTheResetPageOnPasswordResetRequested() {
+        PasswordResetRequestedPayload payload = new PasswordResetRequestedPayload(
+                7L,
+                "ada@ems.local",
+                "ada",
+                "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+                Instant.parse("2026-09-03T10:15:30Z"));
+
+        consumer(FRONTEND_URL).handle(envelope(PasswordResetRequestedPayload.TYPE, payload));
+
+        verify(mailer)
+                .send(
+                        eq(NotificationTemplate.PASSWORD_RESET_KEY),
+                        eq("ada@ems.local"),
+                        eq(Map.of(
+                                "username",
+                                "ada",
+                                "email",
+                                "ada@ems.local",
+                                "resetUrl",
+                                "http://localhost:3000/auth/reset?token=3f2504e0-4f89-11d3-9a0c-0305e82c3301")));
+    }
+
+    /**
+     * The notice carries no link, so the model has no URL in it. That is the assertion worth
+     * making here: a security warning that asks the reader to click is the shape of the
+     * phishing it exists to warn about.
+     */
+    @Test
+    void sendsTheLinklessNoticeOnPasswordChanged() {
+        PasswordChangedPayload payload =
+                new PasswordChangedPayload(7L, "ada@ems.local", "ada", Instant.parse("2026-09-03T10:15:30Z"));
+
+        consumer(FRONTEND_URL).handle(envelope(PasswordChangedPayload.TYPE, payload));
+
+        verify(mailer)
+                .send(
+                        eq(NotificationTemplate.PASSWORD_CHANGED_KEY),
                         eq("ada@ems.local"),
                         eq(Map.of("username", "ada", "email", "ada@ems.local")));
     }

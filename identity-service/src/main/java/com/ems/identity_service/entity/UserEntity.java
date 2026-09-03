@@ -49,6 +49,23 @@ public class UserEntity implements UserDetails {
     @Column(name = "email_verified_at")
     private Instant emailVerifiedAt;
 
+    /**
+     * The moment before which a token issued for this account is no longer honoured, or null
+     * if nothing has ever been revoked for it.
+     *
+     * <p>Refresh tokens are stateless JWTs — nothing records that one was handed out, so a
+     * password reset has no rows to delete. This watermark is what makes them revocable
+     * anyway: {@code refreshToken} compares a presented token's {@code iat} against it and
+     * refuses anything older, which retires every session in one write.
+     *
+     * <p>It bounds refreshing, not access. An access token already issued stays valid until it
+     * expires, because the gateway verifies signatures without a user lookup and checking this
+     * would put a database read on every request. The short access token lifetime is what
+     * closes that window.
+     */
+    @Column(name = "tokens_valid_from")
+    private Instant tokensValidFrom;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id")
     private DepartmentEntity department;

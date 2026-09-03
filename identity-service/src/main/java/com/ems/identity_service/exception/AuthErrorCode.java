@@ -22,5 +22,14 @@ public final class AuthErrorCode {
     /** A verification mail went to this address less than the cooldown ago. */
     public static final String RESEND_TOO_SOON = "RESEND_TOO_SOON";
 
+    /** The password reset token is unknown, or was never one we issued. */
+    public static final String PASSWORD_RESET_TOKEN_INVALID = "PASSWORD_RESET_TOKEN_INVALID";
+
+    /** The password reset token was real, but issued more than an hour ago. */
+    public static final String PASSWORD_RESET_TOKEN_EXPIRED = "PASSWORD_RESET_TOKEN_EXPIRED";
+
+    /** The password reset token was already spent, or retired by a later request. */
+    public static final String PASSWORD_RESET_TOKEN_USED = "PASSWORD_RESET_TOKEN_USED";
+
     private AuthErrorCode() {}
 }
