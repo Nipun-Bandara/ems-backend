@@ -1,7 +1,6 @@
 package com.ems.identity_service.service.impl;
 
 import com.ems.identity_service.dto.request.AssignRoleAndDepartmentRequest;
-import com.ems.identity_service.dto.request.UsersRequest;
 import com.ems.identity_service.dto.response.PaginatedUserResponse;
 import com.ems.identity_service.dto.response.UserRecord;
 import com.ems.identity_service.entity.DepartmentEntity;
@@ -128,10 +127,10 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public PaginatedUserResponse getUsers(UsersRequest usersRequest) {
+    public PaginatedUserResponse getUsers(boolean assigned, int page, int limit) {
 
-        Pageable pageable = PageRequest.of(usersRequest.getPage(), usersRequest.getLimit());
-        if (usersRequest.getAssigned()) {
+        Pageable pageable = PageRequest.of(page, limit);
+        if (assigned) {
 
             Page<UserEntity> usersPage = userRepository.findAll(pageable);
 
