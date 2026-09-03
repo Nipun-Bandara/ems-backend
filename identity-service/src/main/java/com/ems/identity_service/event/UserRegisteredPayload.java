@@ -9,8 +9,16 @@ import java.time.Instant;
  * <p>Deliberately thin. This is a published contract, so anything added here is something
  * every consumer may come to depend on — and the password hash, ban flag and role
  * assignments are identity-service's business, not theirs.
+ *
+ * @param verificationToken the single-use token for the verification link. It travels on the
+ *     event because identity-service mints it but does not send mail: notification-service
+ *     owns the wording and the delivery, and asking it to call back for the token would put a
+ *     synchronous dependency in the middle of an asynchronous pipeline. Note that this makes
+ *     the event a secret-bearing one — it is readable by anything bound to {@code user.*},
+ *     and it lands in notification-service's audit_log.
  */
-public record UserRegisteredPayload(Long userId, String email, String username, Instant occurredAt) {
+public record UserRegisteredPayload(
+        Long userId, String email, String username, String verificationToken, Instant occurredAt) {
 
     /** Event type, and the routing key it is published under. */
     public static final String TYPE = "user.registered";

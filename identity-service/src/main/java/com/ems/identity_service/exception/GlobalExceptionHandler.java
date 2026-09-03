@@ -21,6 +21,34 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
         return buildResponse(HttpStatus.FORBIDDEN, "Forbidden", ex.getMessage(), request);
     }
 
+    /**
+     * A 403 that a client has to tell apart from every other 403, hence the code: the sign-in
+     * page offers a "resend the link" button for this one and a "check your password" message
+     * for the rest.
+     */
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleEmailNotVerified(
+            EmailNotVerifiedException ex, HttpServletRequest request) {
+        return buildResponse(
+                HttpStatus.FORBIDDEN, "Forbidden", ex.getMessage(), request, AuthErrorCode.EMAIL_NOT_VERIFIED);
+    }
+
+    @ExceptionHandler(InvalidVerificationTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidVerificationToken(
+            InvalidVerificationTokenException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage(), request, ex.getCode());
+    }
+
+    @ExceptionHandler(ResendTooSoonException.class)
+    public ResponseEntity<ErrorResponse> handleResendTooSoon(ResendTooSoonException ex, HttpServletRequest request) {
+        return buildResponse(
+                HttpStatus.TOO_MANY_REQUESTS,
+                "Too Many Requests",
+                ex.getMessage(),
+                request,
+                AuthErrorCode.RESEND_TOO_SOON);
+    }
+
     @ExceptionHandler(InvalidTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidToken(InvalidTokenException ex, HttpServletRequest request) {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage(), request);

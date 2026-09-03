@@ -81,6 +81,11 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/validate",
                                 "/api/auth/refresh",
+                                // Both are reached from a mail client or from the sign-in
+                                // page, neither of which has a token to present. The
+                                // verification token in the query string is the credential.
+                                "/api/auth/verify",
+                                "/api/auth/resend-verification",
                                 "/.well-known/jwks.json")
                         .permitAll()
                         .anyRequest()

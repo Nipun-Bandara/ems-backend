@@ -1,6 +1,7 @@
 package com.ems.identity_service.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -38,6 +39,15 @@ public class UserEntity implements UserDetails {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * When the account's email address was proved to be reachable, or null if it has not
+     * been. A timestamp rather than a boolean because the answer to "is this account
+     * verified" is the cheap half of what this column is asked; "since when" is the half a
+     * flag throws away and nothing can reconstruct.
+     */
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id")

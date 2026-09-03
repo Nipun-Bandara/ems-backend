@@ -47,6 +47,11 @@ public class AuthenticationFilter extends OncePerRequestFilter {
             "/api/auth/register",
             "/api/auth/refresh",
             "/api/auth/validate",
+            // Email verification. A link opened from a mail client carries no Authorization
+            // header, and an account that cannot sign in yet has no token to present for the
+            // resend either -- these two are exactly the pair an unverified user can reach.
+            "/api/auth/verify",
+            "/api/auth/resend-verification",
             "/.well-known/**",
             "/actuator/health/**");
 
