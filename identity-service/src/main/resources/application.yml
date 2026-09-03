@@ -3,6 +3,13 @@ spring:
     name: identity-service
   profiles:
     active: development
+  rabbitmq:
+    # The topology itself lives in ems-common; only where the broker is differs per
+    # environment. Publisher confirms and returns are defaulted on by ems-common.
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
 server:
   port: 8081
