@@ -1,0 +1,25 @@
+spring:
+  config:
+    import: optional:file:./notification-service/.env.production[.properties],optional:file:.env.production[.properties]
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 100
+      minimum-idle: 30
+      connection-init-sql: "SELECT 1"
+      connection-test-query: "SELECT 1"
+
+  flyway:
+    enabled: true
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true

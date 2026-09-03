@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: notification-service
+  profiles:
+    active: development
+  rabbitmq:
+    # The topology itself lives in ems-common; only where the broker is differs per
+    # environment. Publisher confirms and returns are defaulted on by ems-common.
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  mail:
+    # Where the mail goes, which is all that differs between environments -- what is
+    # in the mail is a notification_template row, not configuration. Defaults are
+    # MailHog from docker-compose.yml, which accepts anything and delivers nothing.
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          # Both off for MailHog, which has no accounts and no TLS. A real relay
+          # sets these to true from the environment.
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+          # Without these a mail server that stops answering hangs the consumer
+          # thread indefinitely, which looks like a stuck queue rather than a
+          # failed send.
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+server:
+  # No gateway route points here and nothing in this module maps a URL: the port
+  # serves /actuator only. This service's input is the queue.
+  port: 8091
+
+app:
+  mail:
+    from: ${MAIL_FROM:no-reply@ems.local}
+
+logging:
+  pattern:
+    # Injected into the console and file patterns by Spring Boot's logback defaults.
+    # Populated from the message header by ems-common, so a welcome email logs under
+    # the same id as the registration request that caused it.
+    correlation: "[%X{correlationId:-}] "
