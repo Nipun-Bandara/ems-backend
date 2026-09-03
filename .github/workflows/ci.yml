@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - development
+      - staging
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed modules
+    runs-on: ubuntu-latest
+    outputs:
+      gateway: ${{ steps.filter.outputs.gateway }}
+      identity: ${{ steps.filter.outputs.identity }}
+      common: ${{ steps.filter.outputs.common }}
+      root: ${{ steps.filter.outputs.root }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            gateway:
+              - 'api-gateway/**'
+            identity:
+              - 'identity-service/**'
+            common:
+              - 'ems-common/**'
+            root:
+              - 'pom.xml'
+              - '.editorconfig'
+              - '.github/workflows/**'
+
+  build:
+    name: Build and verify
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # ems-common is a dependency of both services, so a change to it — or to
+      # anything at the root — has to rebuild the whole reactor. A PR confined
+      # to a single service builds just that service plus ems-common.
+      - name: Select reactor
+        id: reactor
+        env:
+          GATEWAY: ${{ needs.changes.outputs.gateway }}
+          IDENTITY: ${{ needs.changes.outputs.identity }}
+          COMMON: ${{ needs.changes.outputs.common }}
+          ROOT: ${{ needs.changes.outputs.root }}
+        run: |
+          if [ "$ROOT" = "true" ] || [ "$COMMON" = "true" ]; then
+            scope="all modules"
+            args=""
+          elif [ "$GATEWAY" = "true" ] && [ "$IDENTITY" = "true" ]; then
+            scope="all modules"
+            args=""
+          elif [ "$GATEWAY" = "true" ]; then
+            scope="ems-common, api-gateway"
+            args="-pl ems-common,api-gateway"
+          elif [ "$IDENTITY" = "true" ]; then
+            scope="ems-common, identity-service"
+            args="-pl ems-common,identity-service"
+          else
+            scope="nothing"
+            args=""
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "Building: $scope" >> "$GITHUB_STEP_SUMMARY"
+
+      # Spotless is bound to the verify phase in the root pom, so a formatting
+      # violation fails this step.
+      - name: mvn clean verify
+        if: steps.reactor.outputs.skip != 'true'
+        run: mvn -B clean verify ${{ steps.reactor.outputs.args }}
+
+      - name: No Java modules touched
+        if: steps.reactor.outputs.skip == 'true'
+        run: echo "No module sources changed — nothing to build."
