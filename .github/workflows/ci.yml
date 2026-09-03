@@ -21,6 +21,7 @@ jobs:
     outputs:
       gateway: ${{ steps.filter.outputs.gateway }}
       identity: ${{ steps.filter.outputs.identity }}
+      notification: ${{ steps.filter.outputs.notification }}
       common: ${{ steps.filter.outputs.common }}
       root: ${{ steps.filter.outputs.root }}
     steps:
@@ -34,6 +35,8 @@ jobs:
               - 'api-gateway/**'
             identity:
               - 'identity-service/**'
+            notification:
+              - 'notification-service/**'
             common:
               - 'ems-common/**'
             root:
@@ -54,33 +57,37 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      # ems-common is a dependency of both services, so a change to it — or to
-      # anything at the root — has to rebuild the whole reactor. A PR confined
-      # to a single service builds just that service plus ems-common.
+      # ems-common is a dependency of every service, so a change to it — or to
+      # anything at the root — has to rebuild the whole reactor. Otherwise the
+      # reactor is ems-common plus whichever services the PR touched.
       - name: Select reactor
         id: reactor
         env:
           GATEWAY: ${{ needs.changes.outputs.gateway }}
           IDENTITY: ${{ needs.changes.outputs.identity }}
+          NOTIFICATION: ${{ needs.changes.outputs.notification }}
           COMMON: ${{ needs.changes.outputs.common }}
           ROOT: ${{ needs.changes.outputs.root }}
         run: |
           if [ "$ROOT" = "true" ] || [ "$COMMON" = "true" ]; then
             scope="all modules"
             args=""
-          elif [ "$GATEWAY" = "true" ] && [ "$IDENTITY" = "true" ]; then
-            scope="all modules"
-            args=""
-          elif [ "$GATEWAY" = "true" ]; then
-            scope="ems-common, api-gateway"
-            args="-pl ems-common,api-gateway"
-          elif [ "$IDENTITY" = "true" ]; then
-            scope="ems-common, identity-service"
-            args="-pl ems-common,identity-service"
           else
-            scope="nothing"
-            args=""
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            # Accumulated rather than enumerated: one branch per service, not one
+            # per combination of them.
+            modules=""
+            if [ "$GATEWAY" = "true" ]; then modules="$modules,api-gateway"; fi
+            if [ "$IDENTITY" = "true" ]; then modules="$modules,identity-service"; fi
+            if [ "$NOTIFICATION" = "true" ]; then modules="$modules,notification-service"; fi
+
+            if [ -z "$modules" ]; then
+              scope="nothing"
+              args=""
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            else
+              scope="ems-common$modules"
+              args="-pl ems-common$modules"
+            fi
           fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
           echo "Building: $scope" >> "$GITHUB_STEP_SUMMARY"
