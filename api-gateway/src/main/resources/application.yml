@@ -13,6 +13,13 @@ spring:
 server:
   port: 8080
 
+ems:
+  messaging:
+    # The gateway routes HTTP; it neither publishes nor consumes events. ems-common puts
+    # spring-boot-starter-amqp on its classpath, so say so explicitly rather than leave a
+    # broker connection configured for something that will never use it.
+    enabled: false
+
 logging:
   pattern:
     # Injected into the console and file patterns by Spring Boot's logback defaults.
