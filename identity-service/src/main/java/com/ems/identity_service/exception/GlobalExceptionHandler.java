@@ -39,6 +39,17 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage(), request, ex.getCode());
     }
 
+    /**
+     * Every unusable reset link is a 400, whatever went wrong with it. The code separates the
+     * cases for the page's wording; the status does not, so that probing tokens learns nothing
+     * from the status line alone.
+     */
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken(
+            InvalidPasswordResetTokenException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage(), request, ex.getCode());
+    }
+
     @ExceptionHandler(ResendTooSoonException.class)
     public ResponseEntity<ErrorResponse> handleResendTooSoon(ResendTooSoonException ex, HttpServletRequest request) {
         return buildResponse(

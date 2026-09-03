@@ -86,6 +86,11 @@ public class SecurityConfig {
                                 // verification token in the query string is the credential.
                                 "/api/auth/verify",
                                 "/api/auth/resend-verification",
+                                // Password reset. Someone who cannot sign in is exactly who
+                                // needs these, so requiring a token would make them useless;
+                                // the emailed reset token is the credential for the second.
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
                                 "/.well-known/jwks.json")
                         .permitAll()
                         .anyRequest()

@@ -52,6 +52,10 @@ public class AuthenticationFilter extends OncePerRequestFilter {
             // resend either -- these two are exactly the pair an unverified user can reach.
             "/api/auth/verify",
             "/api/auth/resend-verification",
+            // Password reset. A user who has forgotten their password has no token to
+            // present, and the reset link is opened from a mail client that has none either.
+            "/api/auth/forgot-password",
+            "/api/auth/reset-password",
             "/.well-known/**",
             "/actuator/health/**");
 

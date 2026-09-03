@@ -1,9 +1,13 @@
 package com.ems.identity_service.controller;
 
+import com.ems.identity_service.dto.request.ForgotPasswordRequest;
 import com.ems.identity_service.dto.request.LoginRequest;
 import com.ems.identity_service.dto.request.RegisterRequest;
 import com.ems.identity_service.dto.request.ResendVerificationRequest;
+import com.ems.identity_service.dto.request.ResetPasswordRequest;
 import com.ems.identity_service.dto.response.AuthResponse;
+import com.ems.identity_service.dto.response.ForgotPasswordResponse;
+import com.ems.identity_service.dto.response.PasswordResetResponse;
 import com.ems.identity_service.dto.response.TokenValidationResponse;
 import com.ems.identity_service.dto.response.VerificationResponse;
 import com.ems.identity_service.service.AuthService;
@@ -66,6 +70,30 @@ public class AuthController {
     public ResponseEntity<Void> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
         authService.resendVerification(request);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Starts a password reset.
+     *
+     * <p>Always 200, always the same body. Whether the address has an account, and whether it
+     * has already had its three links this hour, are both invisible here — see
+     * {@link ForgotPasswordResponse}.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ForgotPasswordResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.forgotPassword(request));
+    }
+
+    /**
+     * Completes a password reset.
+     *
+     * <p>A POST, not the GET that {@code /verify} is: this one is not idempotent and must not
+     * be something a mail client can trigger by prefetching the link. The link in the email
+     * goes to a page, and the page makes this request once the user has typed a new password.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<PasswordResetResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.resetPassword(request));
     }
 
     @GetMapping("/validate")
