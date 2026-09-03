@@ -21,6 +21,7 @@ import org.springframework.amqp.rabbit.retry.RepublishMessageRecoverer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
@@ -108,8 +109,14 @@ class RabbitTopologyIntegrationTest {
                 .until(() -> rabbitTemplate.receive(QueueFactory.parkedQueue(SERVICE)), message -> message != null);
     }
 
+    /**
+     * The datasource auto-configuration is excluded because the outbox brought an optional
+     * JPA stack onto ems-common's own test classpath, and Boot would otherwise try to build
+     * a connection pool for a database this test does not have and does not want: it is
+     * about the broker.
+     */
     @SpringBootConfiguration
-    @EnableAutoConfiguration
+    @EnableAutoConfiguration(exclude = DataSourceAutoConfiguration.class)
     static class TestApp {
 
         @Bean

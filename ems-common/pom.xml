@@ -65,6 +65,28 @@
             <optional>true</optional>
         </dependency>
 
+        <!--
+            The outbox needs JPA, AOP and Flyway, and api-gateway needs none of them.
+            All three are optional: everything in com.ems.common.outbox backs off on
+            @ConditionalOnClass, so a service opts in simply by having its own
+            persistence stack, which any service with a database already has.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

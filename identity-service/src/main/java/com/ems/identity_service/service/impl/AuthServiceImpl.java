@@ -1,5 +1,6 @@
 package com.ems.identity_service.service.impl;
 
+import com.ems.common.outbox.OutboxPublisher;
 import com.ems.identity_service.dto.request.LoginRequest;
 import com.ems.identity_service.dto.request.RefreshTokenRequest;
 import com.ems.identity_service.dto.request.RegisterRequest;
@@ -8,6 +9,7 @@ import com.ems.identity_service.dto.response.TokenValidationResponse;
 import com.ems.identity_service.entity.RoleEntity;
 import com.ems.identity_service.entity.UserEntity;
 import com.ems.identity_service.entity.UserRoles;
+import com.ems.identity_service.event.UserRegisteredPayload;
 import com.ems.identity_service.exception.AccountBannedException;
 import com.ems.identity_service.exception.InvalidTokenException;
 import com.ems.identity_service.repository.RoleRepository;
@@ -17,6 +19,7 @@ import com.ems.identity_service.security.AuthenticatedUser;
 import com.ems.identity_service.security.JwtService;
 import com.ems.identity_service.service.AuthService;
 import io.jsonwebtoken.JwtException;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,6 +45,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final OutboxPublisher outboxPublisher;
 
     @Override
     public AuthResponse register(RegisterRequest request) {
@@ -78,6 +82,17 @@ public class AuthServiceImpl implements AuthService {
             userRolesRepository.saveAll(userRoles);
             savedUser.setUserRoles(userRoles);
         }
+
+        // Inside this method's transaction on purpose: the event is committed with the
+        // user or not at all, so the broker being down cannot cost us a registration and
+        // a crash here cannot leave an account nobody was told about. OutboxPoller does
+        // the actual publishing, once the row is safely committed.
+        outboxPublisher.publish(
+                UserRegisteredPayload.AGGREGATE_TYPE,
+                String.valueOf(savedUser.getUserId()),
+                UserRegisteredPayload.TYPE,
+                new UserRegisteredPayload(
+                        savedUser.getUserId(), savedUser.getEmail(), savedUser.getUsername(), Instant.now()));
 
         String token = jwtService.generateToken(savedUser);
         String refreshToken = jwtService.generateRefreshToken(savedUser);

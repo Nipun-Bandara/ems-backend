@@ -63,6 +63,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- ems-common's @IdempotentConsumer is applied by an aspect, and ems-common
+             keeps AspectJ optional so api-gateway does not inherit it. Declared here
+             rather than left to come in behind spring-aspects: this service relies on
+             it directly, and Boot only enables aspect proxying when it is present. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
