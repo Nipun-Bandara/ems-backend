@@ -12,14 +12,22 @@ import org.springframework.context.annotation.Configuration;
  * and parked queues, subscribed to the events this service owns. The exchanges, the message
  * converter and the retry behaviour all come from ems-common.
  *
- * <p>Declaring the queues is separate from using them. Nothing publishes to or consumes from
- * them yet; this only makes sure they exist before the first listener needs them.
+ * <p>Declaring the queues is separate from using them: this only makes sure they exist
+ * before the first listener needs them.
  */
 @Configuration
 @ConditionalOnProperty(name = "ems.messaging.enabled", havingValue = "true", matchIfMissing = true)
 public class MessagingConfig {
 
     static final String SERVICE_NAME = "identity";
+
+    /**
+     * Queue this service consumes from. Spelled out rather than read from
+     * {@link QueueFactory#workQueue(String)} because a {@code @RabbitListener} needs a
+     * compile-time constant; if the two ever disagree the listener fails at startup on a
+     * queue that does not exist.
+     */
+    static final String WORK_QUEUE = SERVICE_NAME + ".q";
 
     @Bean
     public Declarables identityTopology() {
