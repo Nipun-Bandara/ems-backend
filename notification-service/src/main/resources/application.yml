@@ -41,6 +41,11 @@ server:
 app:
   mail:
     from: ${MAIL_FROM:no-reply@ems.local}
+  frontend:
+    # Origin the verification link points at. This service composes the link but does
+    # not serve it -- the page is the frontend's, so where that lives is configuration
+    # here and nothing else in this module depends on it.
+    url: ${FRONTEND_URL:http://localhost:3000}
 
 logging:
   pattern:

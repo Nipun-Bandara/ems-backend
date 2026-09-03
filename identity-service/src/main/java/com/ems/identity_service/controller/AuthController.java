@@ -2,8 +2,10 @@ package com.ems.identity_service.controller;
 
 import com.ems.identity_service.dto.request.LoginRequest;
 import com.ems.identity_service.dto.request.RegisterRequest;
+import com.ems.identity_service.dto.request.ResendVerificationRequest;
 import com.ems.identity_service.dto.response.AuthResponse;
 import com.ems.identity_service.dto.response.TokenValidationResponse;
+import com.ems.identity_service.dto.response.VerificationResponse;
 import com.ems.identity_service.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,30 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<AuthResponse> getCurrentUser() {
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.getCurrentUser());
+    }
+
+    /**
+     * Redeems a verification link. A GET because it is what a mail client opens in a browser,
+     * and the request is idempotent: spending an already-spent token is a 200 saying so, not
+     * an error. See {@link VerificationResponse}.
+     */
+    @GetMapping("/verify")
+    public ResponseEntity<VerificationResponse> verifyEmail(@RequestParam("token") String token) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.verifyEmail(token));
+    }
+
+    /**
+     * Sends a fresh verification link, retiring the ones before it.
+     *
+     * <p>204 rather than a body, and the same 204 whether or not anything was sent: an
+     * address with no account and one that is already verified are answered exactly as a
+     * successful resend is, so that this public endpoint cannot be used to ask which
+     * addresses are registered.
+     */
+    @PostMapping("/resend-verification")
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        authService.resendVerification(request);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/validate")

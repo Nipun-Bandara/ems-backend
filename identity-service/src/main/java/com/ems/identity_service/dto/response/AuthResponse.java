@@ -21,4 +21,11 @@ public class AuthResponse {
     private String departmentName;
     private List<Role> roles;
     private Boolean isBanned;
+
+    /**
+     * Whether the account's email address has been verified. Present on every response for
+     * symmetry, but it is only ever false on the one returned by registration — every other
+     * response here comes from a path an unverified account cannot reach.
+     */
+    private Boolean emailVerified;
 }

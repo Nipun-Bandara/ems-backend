@@ -26,7 +26,10 @@ import org.hibernate.type.SqlTypes;
 @Table(name = "notification_template")
 public class NotificationTemplate {
 
-    /** Key of the template sent to a user who has just registered. */
+    /** Key of the template carrying the verification link, sent when a user registers. */
+    public static final String VERIFY_EMAIL_KEY = "user.verify-email";
+
+    /** Key of the template sent once a user has verified their address. */
     public static final String WELCOME_KEY = "user.welcome";
 
     @Id

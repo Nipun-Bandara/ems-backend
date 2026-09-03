@@ -61,7 +61,16 @@ public class BaseExceptionHandler {
 
     protected ResponseEntity<ErrorResponse> buildResponse(
             HttpStatus status, String error, String message, HttpServletRequest request) {
+        return buildResponse(status, error, message, request, null);
+    }
+
+    /**
+     * As above, but tagging the body with an {@link ErrorResponse#code() error code} for the
+     * failures a client has to tell apart from the others sharing their status.
+     */
+    protected ResponseEntity<ErrorResponse> buildResponse(
+            HttpStatus status, String error, String message, HttpServletRequest request, String code) {
         return ResponseEntity.status(status)
-                .body(ErrorResponse.of(status.value(), error, message, request.getRequestURI()));
+                .body(ErrorResponse.of(status.value(), error, message, request.getRequestURI(), code));
     }
 }

@@ -4,10 +4,14 @@ import com.ems.common.event.EventEnvelope;
 import com.ems.common.outbox.IdempotentConsumer;
 import com.ems.notification_service.entity.NotificationTemplate;
 import com.ems.notification_service.event.UserRegisteredPayload;
+import com.ems.notification_service.event.UserVerifiedPayload;
 import com.ems.notification_service.mail.TemplatedMailer;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
@@ -31,10 +35,15 @@ public class EventConsumer {
 
     private final TemplatedMailer mailer;
     private final JsonMapper jsonMapper;
+    private final String frontendUrl;
 
-    public EventConsumer(TemplatedMailer mailer, JsonMapper jsonMapper) {
+    public EventConsumer(
+            TemplatedMailer mailer, JsonMapper jsonMapper, @Value("${app.frontend.url}") String frontendUrl) {
         this.mailer = mailer;
         this.jsonMapper = jsonMapper;
+        // Trailing slash trimmed once here rather than guarded at each use: the value comes
+        // from a deployment environment, and both spellings of the same host are correct.
+        this.frontendUrl = frontendUrl.endsWith("/") ? frontendUrl.substring(0, frontendUrl.length() - 1) : frontendUrl;
     }
 
     /**
@@ -47,17 +56,52 @@ public class EventConsumer {
     @Transactional
     public void handle(EventEnvelope<JsonNode> event) {
         switch (event.type()) {
-            case UserRegisteredPayload.TYPE -> sendWelcomeEmail(event);
+            case UserRegisteredPayload.TYPE -> sendVerificationEmail(event);
+            case UserVerifiedPayload.TYPE -> sendWelcomeEmail(event);
             default -> log.debug("No notification is defined for {}; acknowledging {}", event.type(), event.eventId());
         }
     }
 
-    private void sendWelcomeEmail(EventEnvelope<JsonNode> event) {
+    /**
+     * The mail a registration causes: a link, and nothing that assumes the account works yet.
+     * Also what a resend produces — identity-service republishes the same event type with a
+     * new token, so there is deliberately no second handler for it here.
+     */
+    private void sendVerificationEmail(EventEnvelope<JsonNode> event) {
         UserRegisteredPayload payload = jsonMapper.treeToValue(event.payload(), UserRegisteredPayload.class);
+        mailer.send(
+                NotificationTemplate.VERIFY_EMAIL_KEY,
+                payload.email(),
+                Map.of(
+                        "username", payload.username(),
+                        "email", payload.email(),
+                        "verifyUrl", verifyUrl(payload.verificationToken())));
+        // The token is a credential for the account. It goes in the link and stays out of
+        // the log, which is why this line names the event rather than what was in it.
+        log.info(
+                "Sent verification link to user {} ({}) from event {}",
+                payload.userId(),
+                payload.email(),
+                event.eventId());
+    }
+
+    /** The mail a verification causes: the account is now usable, so say so. */
+    private void sendWelcomeEmail(EventEnvelope<JsonNode> event) {
+        UserVerifiedPayload payload = jsonMapper.treeToValue(event.payload(), UserVerifiedPayload.class);
         mailer.send(
                 NotificationTemplate.WELCOME_KEY,
                 payload.email(),
                 Map.of("username", payload.username(), "email", payload.email()));
         log.info("Welcomed user {} ({}) from event {}", payload.userId(), payload.email(), event.eventId());
+    }
+
+    /**
+     * Encoded even though the token is a UUID and has nothing to encode. What arrives here
+     * came off the broker, and a value that was not what this service expected must not be
+     * able to add query parameters to a link users are told to click.
+     */
+    private String verifyUrl(String verificationToken) {
+        return "%s/auth/verify?token=%s"
+                .formatted(frontendUrl, URLEncoder.encode(verificationToken, StandardCharsets.UTF_8));
     }
 }
