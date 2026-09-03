@@ -63,6 +63,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- Backs RefreshTokenStore. Refresh tokens are the one credential this service
+             hands out that has to be revocable before it expires, which needs a record of
+             the outstanding ones somewhere every instance can see. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
         <!-- ems-common's @IdempotentConsumer is applied by an aspect, and ems-common
              keeps AspectJ optional so api-gateway does not inherit it. Declared here
              rather than left to come in behind spring-aspects: this service relies on

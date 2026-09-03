@@ -31,5 +31,15 @@ public final class AuthErrorCode {
     /** The password reset token was already spent, or retired by a later request. */
     public static final String PASSWORD_RESET_TOKEN_USED = "PASSWORD_RESET_TOKEN_USED";
 
+    /**
+     * A refresh token whose signature verified was presented after it had already been spent,
+     * and the whole family descended from that sign-in has been retired as a result.
+     *
+     * <p>Distinct from an ordinary rejected refresh because the client's response differs: a
+     * normal 401 means sign in again, this one means the session was cut short deliberately and
+     * is worth telling the user about, since one explanation for it is a stolen token.
+     */
+    public static final String TOKEN_REUSE_DETECTED = "TOKEN_REUSE_DETECTED";
+
     private AuthErrorCode() {}
 }

@@ -43,6 +43,33 @@ public class AuthController {
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.refreshToken(request));
     }
 
+    /**
+     * Ends one session. Authenticated, unlike {@code /refresh}: the access token is what says
+     * who is asking, and the refresh token in the body only says which of their sessions to end.
+     * Taking the caller's identity from the body instead would let anyone holding a leaked token
+     * sign its owner out.
+     *
+     * <p>204 and no body, including when the token was already spent — there is nothing to
+     * report either way, and a client that has just discarded its tokens has nothing to do with
+     * a distinction between the two.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @Valid @RequestBody com.ems.identity_service.dto.request.RefreshTokenRequest request) {
+        authService.logout(request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Ends every session the caller holds. No body: the account is taken from the access token,
+     * and there is nothing to name — that is the point of it.
+     */
+    @PostMapping("/logout-all")
+    public ResponseEntity<Void> logoutAll() {
+        authService.logoutAll();
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/me")
     public ResponseEntity<AuthResponse> getCurrentUser() {
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(authService.getCurrentUser());

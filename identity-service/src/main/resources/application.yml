@@ -3,6 +3,12 @@ spring:
     name: identity-service
   profiles:
     active: development
+  data:
+    redis:
+      # Holds RefreshTokenStore's rt:{userId}:{jti} keys. Every profile points at the
+      # same two variables; only their values differ per environment.
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   rabbitmq:
     # The topology itself lives in ems-common; only where the broker is differs per
     # environment. Publisher confirms and returns are defaulted on by ems-common.

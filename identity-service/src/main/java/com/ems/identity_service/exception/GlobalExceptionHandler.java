@@ -65,6 +65,16 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage(), request);
     }
 
+    /**
+     * The same 401 as any other refused refresh, tagged so the client can tell it apart: this one
+     * means the session was revoked because a spent token came back, not that it simply expired.
+     */
+    @ExceptionHandler(TokenReuseException.class)
+    public ResponseEntity<ErrorResponse> handleTokenReuse(TokenReuseException ex, HttpServletRequest request) {
+        return buildResponse(
+                HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage(), request, AuthErrorCode.TOKEN_REUSE_DETECTED);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(
             IllegalArgumentException ex, HttpServletRequest request) {

@@ -78,6 +78,9 @@ class AuthServicePasswordResetTest {
     private com.ems.identity_service.security.JwtService jwtService;
 
     @Mock
+    private com.ems.identity_service.security.RefreshTokenStore refreshTokenStore;
+
+    @Mock
     private org.springframework.security.authentication.AuthenticationManager authenticationManager;
 
     @Mock
@@ -168,6 +171,9 @@ class AuthServicePasswordResetTest {
         // The watermark is what actually revokes the sessions -- without it the reset would
         // change the password and leave every existing refresh token working.
         assertThat(user.getTokensValidFrom()).isNotNull();
+        // And the rows go with it, so the sessions end now rather than merely stopping being
+        // extendable. Item 14's requirement, and the reason a reset is not just a password write.
+        verify(refreshTokenStore).revokeAll(7L);
         verify(outboxPublisher).publish(anyString(), anyString(), eq(PasswordChangedPayload.TYPE), any());
     }
 

@@ -20,7 +20,32 @@ public interface AuthService {
 
     TokenValidationResponse validateToken(String token);
 
+    /**
+     * Rotates a refresh token: spends the one presented and returns a new pair in its place, in
+     * the same family.
+     *
+     * @throws com.ems.identity_service.exception.TokenReuseException if the token verifies but
+     *     has already been spent, in which case its whole family is revoked first
+     * @throws com.ems.identity_service.exception.InvalidTokenException if the token is
+     *     unparseable, expired, not a refresh token, or predates a password reset
+     */
     AuthResponse refreshToken(com.ems.identity_service.dto.request.RefreshTokenRequest request);
+
+    /**
+     * Ends the session the given refresh token belongs to, leaving the account's other sessions
+     * alone. Idempotent: a token that was already spent is not an error, there is simply nothing
+     * left to delete.
+     *
+     * <p>The token is only ever looked up under the authenticated caller's id, so presenting
+     * somebody else's does nothing.
+     *
+     * @throws com.ems.identity_service.exception.InvalidTokenException if the token cannot be
+     *     verified, so there is no {@code jti} to act on
+     */
+    void logout(com.ems.identity_service.dto.request.RefreshTokenRequest request);
+
+    /** Ends every session the authenticated caller holds, this one included. */
+    void logoutAll();
 
     /**
      * Redeems a verification token, marking it used and the account verified.

@@ -27,6 +27,7 @@ import com.ems.identity_service.exception.InvalidPasswordResetTokenException;
 import com.ems.identity_service.exception.InvalidTokenException;
 import com.ems.identity_service.exception.InvalidVerificationTokenException;
 import com.ems.identity_service.exception.ResendTooSoonException;
+import com.ems.identity_service.exception.TokenReuseException;
 import com.ems.identity_service.repository.PasswordResetTokenRepository;
 import com.ems.identity_service.repository.RoleRepository;
 import com.ems.identity_service.repository.UserRepository;
@@ -34,6 +35,7 @@ import com.ems.identity_service.repository.UserRolesRepository;
 import com.ems.identity_service.repository.VerificationTokenRepository;
 import com.ems.identity_service.security.AuthenticatedUser;
 import com.ems.identity_service.security.JwtService;
+import com.ems.identity_service.security.RefreshTokenStore;
 import com.ems.identity_service.service.AuthService;
 import io.jsonwebtoken.JwtException;
 import java.time.Duration;
@@ -87,6 +89,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenStore refreshTokenStore;
     private final AuthenticationManager authenticationManager;
     private final OutboxPublisher outboxPublisher;
 
@@ -189,8 +192,10 @@ public class AuthServiceImpl implements AuthService {
         List<UserRoles> userRoles = userRolesRepository.findByUser_UserId(user.getUserId());
         user.setUserRoles(userRoles);
 
+        // A new sign-in starts its own family. Nothing links it to the sessions this account
+        // already has, so revoking one for replay leaves the others alone.
+        String refreshToken = issueRefreshToken(user, UUID.randomUUID().toString());
         String token = jwtService.generateToken(user);
-        String refreshToken = jwtService.generateRefreshToken(user);
 
         return AuthResponse.builder()
                 .token(token)
@@ -275,63 +280,133 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse refreshToken(RefreshTokenRequest request) {
-        String requestRefreshToken = request.getRefreshToken();
-        String username = jwtService.extractUsername(requestRefreshToken);
+        String presented = request.getRefreshToken();
 
-        if (username != null) {
-            UserEntity user = userRepository
-                    .findByUsername(username)
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-
-            // Check if token is valid
-            if (jwtService.isTokenValid(requestRefreshToken, user)) {
-
-                // Optional: Check if banned
-                if (user.getIsBanned()) {
-                    throw new AccountBannedException("Your account has been banned from the system");
-                }
-
-                // A signature that still verifies is not enough on its own: a password reset
-                // revokes the sessions that predate it, and this is where that takes effect.
-                // Refused as an invalid refresh token rather than with a distinct error --
-                // there is nothing the holder can do about it except sign in again, which is
-                // what a rejected refresh already tells them to do.
-                if (isRevoked(requestRefreshToken, user)) {
-                    log.info(
-                            "Refusing a refresh token for user {} issued before its credentials changed",
-                            user.getUserId());
-                    throw new InvalidTokenException("Invalid refresh token");
-                }
-
-                // Generate new access token
-                String token = jwtService.generateToken(user);
-
-                // Load roles
-                List<UserRoles> userRoles = userRolesRepository.findByUser_UserId(user.getUserId());
-
-                return AuthResponse.builder()
-                        .token(token)
-                        .refreshToken(requestRefreshToken) // Return the same refresh token, or generate a new one
-                        .userId(user.getUserId())
-                        .email(user.getEmail())
-                        .username(user.getUsername())
-                        .departmentId(
-                                user.getDepartment() != null
-                                        ? user.getDepartment().getDepartmentId()
-                                        : null)
-                        .departmentName(
-                                user.getDepartment() != null
-                                        ? user.getDepartment().getDepartmentName()
-                                        : null)
-                        .roles(userRoles.stream()
-                                .map(ur -> ur.getRole().getRoleName())
-                                .collect(Collectors.toList()))
-                        .isBanned(user.getIsBanned())
-                        .emailVerified(user.getEmailVerifiedAt() != null)
-                        .build();
-            }
+        // Parsing verifies the signature and the expiry in one step, and an expired token
+        // throws here rather than reaching the store. That ordering matters: its row has
+        // expired too, so checking the store first would report an ordinary timeout as a
+        // replay and revoke the family over it.
+        String username;
+        String jti;
+        String familyId;
+        try {
+            username = jwtService.extractUsername(presented);
+            jti = jwtService.extractJti(presented);
+            familyId = jwtService.extractFamilyId(presented);
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new InvalidTokenException("Invalid refresh token");
         }
-        throw new InvalidTokenException("Invalid refresh token");
+
+        // No jti or no family means this is not a refresh token -- an access token, or one
+        // minted before rotation existed. Neither names a row, so neither can be spent, and
+        // treating them as replays would revoke a family over presenting the wrong token.
+        if (username == null || jti == null || familyId == null) {
+            throw new InvalidTokenException("Invalid refresh token");
+        }
+
+        UserEntity user = userRepository
+                .findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        // Before the ban and revocation checks, because this one is the reason to act on a
+        // token rather than a reason to refuse it. A stolen token presented for a banned
+        // account should still take the family down with it.
+        if (!refreshTokenStore.consume(user.getUserId(), jti)) {
+            log.warn(
+                    "Refresh token {} for user {} was presented after being spent; revoking family {}",
+                    jti,
+                    user.getUserId(),
+                    familyId);
+            refreshTokenStore.revokeFamily(user.getUserId(), familyId);
+            throw new TokenReuseException(
+                    "This session has been ended because a refresh token was used twice. Sign in again.");
+        }
+
+        if (user.getIsBanned()) {
+            throw new AccountBannedException("Your account has been banned from the system");
+        }
+
+        // A signature that still verifies is not enough on its own: a password reset
+        // revokes the sessions that predate it, and this is where that takes effect for
+        // anything the reset's own sweep of the store somehow missed. Refused as an invalid
+        // refresh token rather than with a distinct error -- there is nothing the holder can
+        // do about it except sign in again, which is what a rejected refresh already tells
+        // them to do.
+        if (isRevoked(presented, user)) {
+            log.info("Refusing a refresh token for user {} issued before its credentials changed", user.getUserId());
+            throw new InvalidTokenException("Invalid refresh token");
+        }
+
+        // Load roles
+        List<UserRoles> userRoles = userRolesRepository.findByUser_UserId(user.getUserId());
+        user.setUserRoles(userRoles);
+
+        // Same family, new jti: the replacement is as revocable as what it replaced, and
+        // finding either of them replayed later retires both.
+        String refreshToken = issueRefreshToken(user, familyId);
+        String token = jwtService.generateToken(user);
+
+        return AuthResponse.builder()
+                .token(token)
+                .refreshToken(refreshToken)
+                .userId(user.getUserId())
+                .email(user.getEmail())
+                .username(user.getUsername())
+                .departmentId(
+                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
+                .departmentName(
+                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .roles(userRoles.stream().map(ur -> ur.getRole().getRoleName()).collect(Collectors.toList()))
+                .isBanned(user.getIsBanned())
+                .emailVerified(user.getEmailVerifiedAt() != null)
+                .build();
+    }
+
+    @Override
+    public void logout(RefreshTokenRequest request) {
+        Long userId = AuthenticatedUser.requireUserId(
+                SecurityContextHolder.getContext().getAuthentication());
+
+        String jti;
+        try {
+            jti = jwtService.extractJti(request.getRefreshToken());
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new InvalidTokenException("Invalid refresh token");
+        }
+        if (jti == null) {
+            throw new InvalidTokenException("Invalid refresh token");
+        }
+
+        // Under the caller's own id, never the one in the token: the access token is what
+        // proves who is asking, so a refresh token belonging to somebody else names a key
+        // that does not exist and deletes nothing.
+        //
+        // The result is ignored on purpose. A token that was already spent leaves the caller
+        // exactly where they wanted to be, so signing out twice is not an error.
+        refreshTokenStore.consume(userId, jti);
+        log.info("Signed out one session for user {}", userId);
+    }
+
+    @Override
+    public void logoutAll() {
+        Long userId = AuthenticatedUser.requireUserId(
+                SecurityContextHolder.getContext().getAuthentication());
+
+        refreshTokenStore.revokeAll(userId);
+    }
+
+    /**
+     * Mints a refresh token in the given family and records it, returning the token.
+     *
+     * <p>The row is written before the token is handed out, so there is no window in which a
+     * caller holds a token the store has never heard of — which is exactly what a replay looks
+     * like. The reverse ordering would turn a crash between the two into a session that is
+     * refused, and its family revoked, the first time it is refreshed.
+     */
+    private String issueRefreshToken(UserEntity user, String familyId) {
+        String jti = UUID.randomUUID().toString();
+        refreshTokenStore.store(user.getUserId(), jti, familyId, Instant.now(), jwtService.getRefreshTokenTtl());
+        return jwtService.generateRefreshToken(user, jti, familyId);
     }
 
     @Override
@@ -502,6 +577,16 @@ public class AuthServiceImpl implements AuthService {
         // it are exactly the ones that should not survive -- including the attacker's, if the
         // reason for the reset was that someone else had signed in.
         user.setTokensValidFrom(now);
+
+        // The watermark alone would do it, but deleting the rows is what actually ends the
+        // sessions rather than only refusing to extend them, and it is what keeps the store
+        // from holding tokens nothing will ever honour again.
+        //
+        // Outside the transaction's control: if the commit below fails, the tokens are gone
+        // and the password is unchanged. That errs towards signing a user out of sessions
+        // they could have kept, which is the harmless direction -- the other ordering would
+        // leave a reset password with the old sessions still live.
+        refreshTokenStore.revokeAll(user.getUserId());
 
         outboxPublisher.publish(
                 PasswordChangedPayload.AGGREGATE_TYPE,
