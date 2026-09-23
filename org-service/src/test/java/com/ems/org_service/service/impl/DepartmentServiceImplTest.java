@@ -12,6 +12,7 @@ import com.ems.org_service.entity.DepartmentEntity;
 import com.ems.org_service.event.DepartmentCreatedPayload;
 import com.ems.org_service.event.DepartmentDeletedPayload;
 import com.ems.org_service.repository.DepartmentRepository;
+import com.ems.org_service.repository.DesignationRepository;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,9 @@ class DepartmentServiceImplTest {
 
     @Mock
     private DepartmentRepository departments;
+
+    @Mock
+    private DesignationRepository designations;
 
     @Mock
     private OutboxPublisher outbox;
@@ -41,7 +45,8 @@ class DepartmentServiceImplTest {
                     return saved;
                 });
 
-        DepartmentResponse response = new DepartmentServiceImpl(departments, outbox).createDepartment(request);
+        DepartmentResponse response =
+                new DepartmentServiceImpl(departments, designations, outbox).createDepartment(request);
 
         assertThat(response.getDepartmentId()).isEqualTo(12L);
         assertThat(response.getDepartmentName()).isEqualTo("Engineering");
@@ -64,7 +69,7 @@ class DepartmentServiceImplTest {
                 .build();
         when(departments.findById(12L)).thenReturn(Optional.of(department));
 
-        new DepartmentServiceImpl(departments, outbox).deleteDepartment(12L);
+        new DepartmentServiceImpl(departments, designations, outbox).deleteDepartment(12L);
 
         verify(departments).delete(department);
         verify(outbox)
