@@ -76,11 +76,12 @@ public final class QueueFactory {
      * queue to {@value RabbitTopologyConfig#EVENTS_EXCHANGE} on every pattern given.
      *
      * @param serviceName short name of the service, used as the queue name prefix
-     * @param patterns topic patterns the service subscribes to, for example {@code "user.*"}
+     * @param patterns topic patterns the service subscribes to, for example {@code "user.*"};
+     *     may be empty while a service has no domain events to consume
      */
     public static Declarables declare(String serviceName, List<String> patterns) {
         requireServiceName(serviceName);
-        Assert.notEmpty(patterns, "patterns must not be empty");
+        Assert.notNull(patterns, "patterns must not be null");
 
         TopicExchange events = new TopicExchange(EVENTS_EXCHANGE, true, false);
         TopicExchange deadLetter = new TopicExchange(DEAD_LETTER_EXCHANGE, true, false);

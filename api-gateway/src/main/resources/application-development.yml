@@ -10,6 +10,10 @@ spring:
               uri: ${IDENTITY_SERVICE_URL}
               predicates:
                 - Path=/api/auth/**, /api/users/**, /api/departments/**
+            - id: org-service
+              uri: ${ORG_SERVICE_URL}
+              predicates:
+                - Path=/api/org/**
 
 app:
   security:

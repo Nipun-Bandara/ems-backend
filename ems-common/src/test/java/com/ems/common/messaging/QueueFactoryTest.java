@@ -75,8 +75,18 @@ class QueueFactoryTest {
     @Test
     void rejectsATopologyItCannotName() {
         assertThatIllegalArgumentException().isThrownBy(() -> QueueFactory.declare(" ", List.of("invoice.*")));
-        assertThatIllegalArgumentException().isThrownBy(() -> QueueFactory.declare("billing", List.of()));
+        assertThatIllegalArgumentException().isThrownBy(() -> QueueFactory.declare("billing", null));
         assertThatIllegalArgumentException().isThrownBy(() -> QueueFactory.declare("billing", List.of(" ")));
+    }
+
+    @Test
+    void permitsAServiceWithNoDomainEventPatternsYet() {
+        Declarables topology = QueueFactory.declare("org", List.of());
+
+        assertThat(topology.getDeclarablesByType(Binding.class))
+                .filteredOn(binding -> binding.getDestination().equals("org.q"))
+                .extracting(Binding::getExchange, Binding::getRoutingKey)
+                .containsExactly(tuple(RabbitTopologyConfig.EVENTS_EXCHANGE, "org.retry"));
     }
 
     private static Queue queue(String name) {
