@@ -1,4 +1,4 @@
-package com.ems.identity_service.dto.request;
+package com.ems.org_service.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

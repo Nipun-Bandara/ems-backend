@@ -9,11 +9,11 @@ spring:
             - id: identity-service
               uri: ${IDENTITY_SERVICE_URL}
               predicates:
-                - Path=/api/auth/**, /api/users/**, /api/departments/**
+                - Path=/api/auth/**, /api/users/**
             - id: org-service
               uri: ${ORG_SERVICE_URL}
               predicates:
-                - Path=/api/org/**
+                - Path=/api/org/**, /api/departments/**
 
 app:
   security:

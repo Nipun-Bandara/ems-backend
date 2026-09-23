@@ -1,4 +1,4 @@
-package com.ems.identity_service.entity;
+package com.ems.org_service.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;

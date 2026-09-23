@@ -31,6 +31,7 @@ public class MessagingConfig {
 
     @Bean
     public Declarables identityTopology() {
-        return QueueFactory.declare(SERVICE_NAME, List.of("user.*", "department.*"));
+        return QueueFactory.declare(
+                SERVICE_NAME, List.of("user.*", "department.created", "department.renamed", "department.deleted"));
     }
 }
