@@ -3,11 +3,11 @@ package com.ems.identity_service.service.impl;
 import com.ems.identity_service.dto.request.AssignRoleAndDepartmentRequest;
 import com.ems.identity_service.dto.response.PaginatedUserResponse;
 import com.ems.identity_service.dto.response.UserRecord;
-import com.ems.identity_service.entity.DepartmentEntity;
 import com.ems.identity_service.entity.RoleEntity;
 import com.ems.identity_service.entity.UserEntity;
 import com.ems.identity_service.entity.UserRoles;
-import com.ems.identity_service.repository.DepartmentRepository;
+import com.ems.identity_service.projection.DepartmentReplicaEntity;
+import com.ems.identity_service.projection.DepartmentReplicaRepository;
 import com.ems.identity_service.repository.RoleRepository;
 import com.ems.identity_service.repository.UserRepository;
 import com.ems.identity_service.repository.UserRolesRepository;
@@ -34,7 +34,7 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserRolesRepository userRolesRepository;
-    private final DepartmentRepository departmentRepository;
+    private final DepartmentReplicaRepository departmentReplicaRepository;
 
     @Override
     public UserRecord assignRoleAndDepartment(Long userId, AssignRoleAndDepartmentRequest request) {
@@ -74,11 +74,12 @@ public class UserServiceImpl implements UserService {
             }
 
             if (request.getDepartmentId() != null) {
-                DepartmentEntity department = departmentRepository
+                DepartmentReplicaEntity department = departmentReplicaRepository
                         .findById(request.getDepartmentId())
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Department not found with ID: " + request.getDepartmentId()));
-                user.setDepartment(department);
+                user.setDepartmentId(department.getDepartmentId());
+                user.setDepartmentName(department.getDepartmentName());
                 user.setIsAssigned(true);
             }
         } else if (isDepartmentHead) {
@@ -86,7 +87,7 @@ public class UserServiceImpl implements UserService {
                 throw new IllegalArgumentException("Department Head can only assign role. Role field is required.");
             }
 
-            if (authUser.getDepartment() == null) {
+            if (authUser.getDepartmentId() == null) {
                 throw new IllegalArgumentException("Department Head must have a department assigned to assign users.");
             }
 
@@ -106,7 +107,8 @@ public class UserServiceImpl implements UserService {
 
             userRolesRepository.save(userRole);
             user.setUserRoles(new ArrayList<>(List.of(userRole)));
-            user.setDepartment(authUser.getDepartment());
+            user.setDepartmentId(authUser.getDepartmentId());
+            user.setDepartmentName(authUser.getDepartmentName());
             user.setIsAssigned(true);
         } else {
             throw new IllegalArgumentException("User does not have permission to assign roles or departments.");
@@ -168,10 +170,8 @@ public class UserServiceImpl implements UserService {
                 .userId(user.getUserId())
                 .username(user.getUsername())
                 .email(user.getEmail())
-                .departmentId(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                .departmentName(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .departmentId(user.getDepartmentId())
+                .departmentName(user.getDepartmentName())
                 .isAssigned(user.getIsAssigned())
                 .roles(roles)
                 .isBanned(user.getIsBanned())

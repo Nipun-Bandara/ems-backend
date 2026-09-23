@@ -142,14 +142,8 @@ public class AuthServiceImpl implements AuthService {
                 .userId(savedUser.getUserId())
                 .email(savedUser.getEmail())
                 .username(savedUser.getUsername())
-                .departmentId(
-                        savedUser.getDepartment() != null
-                                ? savedUser.getDepartment().getDepartmentId()
-                                : null)
-                .departmentName(
-                        savedUser.getDepartment() != null
-                                ? savedUser.getDepartment().getDepartmentName()
-                                : null)
+                .departmentId(savedUser.getDepartmentId())
+                .departmentName(savedUser.getDepartmentName())
                 .roles(
                         savedUser.getUserRoles() != null
                                 ? savedUser.getUserRoles().stream()
@@ -203,10 +197,8 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
-                .departmentId(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                .departmentName(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .departmentId(user.getDepartmentId())
+                .departmentName(user.getDepartmentName())
                 .roles(userRoles.stream().map(ur -> ur.getRole().getRoleName()).collect(Collectors.toList()))
                 .isBanned(user.getIsBanned())
                 .emailVerified(true)
@@ -233,10 +225,8 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
-                .departmentId(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                .departmentName(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .departmentId(user.getDepartmentId())
+                .departmentName(user.getDepartmentName())
                 .roles(userRoles.stream().map(ur -> ur.getRole().getRoleName()).collect(Collectors.toList()))
                 .isBanned(user.getIsBanned())
                 .emailVerified(user.getEmailVerifiedAt() != null)
@@ -352,10 +342,8 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .username(user.getUsername())
-                .departmentId(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentId() : null)
-                .departmentName(
-                        user.getDepartment() != null ? user.getDepartment().getDepartmentName() : null)
+                .departmentId(user.getDepartmentId())
+                .departmentName(user.getDepartmentName())
                 .roles(userRoles.stream().map(ur -> ur.getRole().getRoleName()).collect(Collectors.toList()))
                 .isBanned(user.getIsBanned())
                 .emailVerified(user.getEmailVerifiedAt() != null)

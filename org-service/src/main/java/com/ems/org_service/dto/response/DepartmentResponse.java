@@ -1,4 +1,4 @@
-package com.ems.identity_service.dto.response;
+package com.ems.org_service.dto.response;
 
 import java.time.LocalDateTime;
 import lombok.*;

@@ -66,9 +66,11 @@ public class UserEntity implements UserDetails {
     @Column(name = "tokens_valid_from")
     private Instant tokensValidFrom;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "department_id")
-    private DepartmentEntity department;
+    @Column(name = "department_id")
+    private Long departmentId;
+
+    @Column(name = "department_name")
+    private String departmentName;
 
     @Column(name = "is_assigned", nullable = false)
     @Builder.Default

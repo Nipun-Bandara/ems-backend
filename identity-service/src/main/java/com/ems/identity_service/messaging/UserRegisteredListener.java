@@ -5,10 +5,11 @@ import com.ems.common.outbox.IdempotentConsumer;
 import com.ems.identity_service.event.UserRegisteredPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Consumes the {@value UserRegisteredPayload#TYPE} events this service itself produces —
@@ -24,12 +25,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserRegisteredListener {
 
     private static final Logger log = LoggerFactory.getLogger(UserRegisteredListener.class);
+    private final JsonMapper jsonMapper;
 
-    @RabbitListener(queues = MessagingConfig.WORK_QUEUE)
+    public UserRegisteredListener(JsonMapper jsonMapper) {
+        this.jsonMapper = jsonMapper;
+    }
+
     @IdempotentConsumer("identity.user-registered")
     @Transactional
-    public void onUserRegistered(EventEnvelope<UserRegisteredPayload> event) {
-        UserRegisteredPayload payload = event.payload();
+    public void onUserRegistered(EventEnvelope<JsonNode> event) {
+        UserRegisteredPayload payload = jsonMapper.treeToValue(event.payload(), UserRegisteredPayload.class);
         log.info("Handled {} {} for user {} ({})", event.type(), event.eventId(), payload.userId(), payload.email());
     }
 }

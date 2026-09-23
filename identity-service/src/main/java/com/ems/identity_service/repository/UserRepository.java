@@ -1,6 +1,7 @@
 package com.ems.identity_service.repository;
 
 import com.ems.identity_service.entity.UserEntity;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,4 +17,6 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     Page<UserEntity> findByIsAssignedTrue(Pageable pageable);
 
     Page<UserEntity> findByIsAssignedFalse(Pageable pageable);
+
+    List<UserEntity> findByDepartmentId(Long departmentId);
 }

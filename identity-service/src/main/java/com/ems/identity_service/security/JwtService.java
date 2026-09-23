@@ -94,8 +94,8 @@ public class JwtService {
         claims.put("userId", userEntity.getUserId());
         claims.put("username", userEntity.getUsername());
         claims.put("email", userEntity.getEmail());
-        if (userEntity.getDepartment() != null) {
-            claims.put("departmentId", userEntity.getDepartment().getDepartmentId());
+        if (userEntity.getDepartmentId() != null) {
+            claims.put("departmentId", userEntity.getDepartmentId());
         }
 
         List<String> roles = userEntity.getUserRoles() != null

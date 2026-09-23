@@ -1,8 +1,8 @@
-package com.ems.identity_service.controller;
+package com.ems.org_service.controller;
 
-import com.ems.identity_service.dto.request.CreateDepartmentRequest;
-import com.ems.identity_service.dto.response.DepartmentResponse;
-import com.ems.identity_service.service.DepartmentService;
+import com.ems.org_service.dto.request.CreateDepartmentRequest;
+import com.ems.org_service.dto.response.DepartmentResponse;
+import com.ems.org_service.service.DepartmentService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -37,5 +37,21 @@ public class DepartmentController {
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(departmentService.getDepartmentById(departmentId));
+    }
+
+    @PutMapping("/{departmentId}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<DepartmentResponse> updateDepartment(
+            @PathVariable Long departmentId, @Valid @RequestBody CreateDepartmentRequest request) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(departmentService.updateDepartment(departmentId, request));
+    }
+
+    @DeleteMapping("/{departmentId}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteDepartment(@PathVariable Long departmentId) {
+        departmentService.deleteDepartment(departmentId);
+        return ResponseEntity.noContent().build();
     }
 }
