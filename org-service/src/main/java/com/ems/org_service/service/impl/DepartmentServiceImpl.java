@@ -7,7 +7,9 @@ import com.ems.org_service.entity.DepartmentEntity;
 import com.ems.org_service.event.DepartmentCreatedPayload;
 import com.ems.org_service.event.DepartmentDeletedPayload;
 import com.ems.org_service.event.DepartmentRenamedPayload;
+import com.ems.org_service.exception.ConflictException;
 import com.ems.org_service.repository.DepartmentRepository;
+import com.ems.org_service.repository.DesignationRepository;
 import com.ems.org_service.service.DepartmentService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DepartmentServiceImpl implements DepartmentService {
 
     private final DepartmentRepository departmentRepository;
+    private final DesignationRepository designationRepository;
     private final OutboxPublisher outboxPublisher;
 
     @Override
@@ -78,6 +81,10 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Override
     public void deleteDepartment(Long departmentId) {
         DepartmentEntity department = findDepartment(departmentId);
+        if (designationRepository.existsByDepartmentId(departmentId)) {
+            throw new ConflictException(
+                    "Cannot delete department with ID " + departmentId + " because it still has designations");
+        }
         departmentRepository.delete(department);
         outboxPublisher.publish(
                 "department",

@@ -13,7 +13,7 @@ spring:
             - id: org-service
               uri: ${ORG_SERVICE_URL}
               predicates:
-                - Path=/api/org/**, /api/departments/**
+                - Path=/api/org/**, /api/departments/**, /api/designations/**
 
 app:
   security:
