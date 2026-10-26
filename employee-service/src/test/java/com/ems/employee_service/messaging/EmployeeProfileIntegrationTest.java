@@ -28,6 +28,7 @@ import org.testcontainers.rabbitmq.RabbitMQContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
 @ActiveProfiles("test")
 @Testcontainers
@@ -39,8 +40,24 @@ class EmployeeProfileIntegrationTest {
     @Container
     static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:4-management");
 
+    @Container
+    static final org.testcontainers.containers.GenericContainer<?> MINIO =
+            new org.testcontainers.containers.GenericContainer<>("minio/minio:latest")
+                    .withEnv("MINIO_ROOT_USER", "ems_minio")
+                    .withEnv("MINIO_ROOT_PASSWORD", "ems_local_dev")
+                    .withCommand("server", "/data")
+                    .withExposedPorts(9000)
+                    .waitingFor(org.testcontainers.containers.wait.strategy.Wait.forHttp("/minio/health/ready")
+                            .forPort(9000));
+
     @DynamicPropertySource
     static void infrastructure(DynamicPropertyRegistry properties) {
+        properties.add("ems.storage.endpoint", () -> "http://" + MINIO.getHost() + ":" + MINIO.getMappedPort(9000));
+        properties.add(
+                "ems.storage.public-endpoint", () -> "http://" + MINIO.getHost() + ":" + MINIO.getMappedPort(9000));
+        properties.add("ems.storage.access-key", () -> "ems_minio");
+        properties.add("ems.storage.secret-key", () -> "ems_local_dev");
+        properties.add("ems.storage.path-style-access", () -> "true");
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
@@ -64,6 +81,71 @@ class EmployeeProfileIntegrationTest {
 
     @Autowired
     JsonMapper json;
+
+    @Autowired
+    org.springframework.test.web.servlet.MockMvc mvc;
+
+    @Autowired
+    com.ems.common.storage.StorageService storage;
+
+    @Test
+    void avatarUploadsDirectlyToMinioThenProfileReturnsDownloadUrl() throws Exception {
+        handler.onUserVerified(verified(UUID.randomUUID(), "ada@ems.local"));
+        byte[] image = java.util.Base64.getDecoder()
+                .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
+        String body = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/api/employees/42/avatar/upload-url")
+                        .header("X-User-Id", "42")
+                        .contentType("application/json")
+                        .content("{\"contentType\":\"image/png\",\"size\":" + image.length + "}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                        .isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        var upload = json.readTree(body);
+        String key = upload.get("objectKey").asText();
+        try {
+            var http = java.net.http.HttpClient.newHttpClient();
+            var put = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(upload.get("uploadUrl").asText()))
+                    .header("Content-Type", "image/png")
+                    .header("If-None-Match", "*")
+                    .PUT(java.net.http.HttpRequest.BodyPublishers.ofByteArray(image))
+                    .build();
+            assertThat(http.send(put, java.net.http.HttpResponse.BodyHandlers.discarding())
+                            .statusCode())
+                    .isEqualTo(200);
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                                    "/api/employees/42/avatar")
+                            .header("X-User-Id", "42")
+                            .contentType("application/json")
+                            .content(json.writeValueAsString(Map.of("objectKey", key))))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isOk());
+            String profile = mvc.perform(
+                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/employees/42")
+                                    .header("X-User-Id", "42"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            var result = json.readTree(profile);
+            assertThat(result.has("avatarObjectKey")).isFalse();
+            var get = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(result.get("avatarUrl").asText()))
+                    .GET()
+                    .build();
+            var downloaded = http.send(get, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(downloaded.statusCode()).isEqualTo(200);
+            assertThat(downloaded.body()).isEqualTo(image);
+            assertThat(profiles.findById(42L).orElseThrow().getAvatarObjectKey())
+                    .isEqualTo(key);
+        } finally {
+            storage.delete("ems-avatars", key);
+        }
+    }
 
     private static final Instant VERIFIED_AT = Instant.parse("2026-10-01T10:00:00Z");
 

@@ -24,3 +24,11 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+
+ems:
+  storage:
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:http://localhost:9000}
+    access-key: ${STORAGE_ACCESS_KEY:ems_minio}
+    secret-key: ${STORAGE_SECRET_KEY:ems_local_dev}
+    path-style-access: ${STORAGE_PATH_STYLE_ACCESS:true}

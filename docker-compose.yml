@@ -84,6 +84,7 @@ services:
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
+      MINIO_API_CORS_ALLOW_ORIGIN: "http://localhost:3000,http://127.0.0.1:3000"
       MINIO_ROOT_USER: ems_minio
       MINIO_ROOT_PASSWORD: ems_local_dev
     ports:
