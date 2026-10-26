@@ -22,6 +22,7 @@ jobs:
       gateway: ${{ steps.filter.outputs.gateway }}
       identity: ${{ steps.filter.outputs.identity }}
       notification: ${{ steps.filter.outputs.notification }}
+      org: ${{ steps.filter.outputs.org }}
       common: ${{ steps.filter.outputs.common }}
       root: ${{ steps.filter.outputs.root }}
     steps:
@@ -37,6 +38,8 @@ jobs:
               - 'identity-service/**'
             notification:
               - 'notification-service/**'
+            org:
+              - 'org-service/**'
             common:
               - 'ems-common/**'
             root:
@@ -66,6 +69,7 @@ jobs:
           GATEWAY: ${{ needs.changes.outputs.gateway }}
           IDENTITY: ${{ needs.changes.outputs.identity }}
           NOTIFICATION: ${{ needs.changes.outputs.notification }}
+          ORG: ${{ needs.changes.outputs.org }}
           COMMON: ${{ needs.changes.outputs.common }}
           ROOT: ${{ needs.changes.outputs.root }}
         run: |
@@ -79,6 +83,7 @@ jobs:
             if [ "$GATEWAY" = "true" ]; then modules="$modules,api-gateway"; fi
             if [ "$IDENTITY" = "true" ]; then modules="$modules,identity-service"; fi
             if [ "$NOTIFICATION" = "true" ]; then modules="$modules,notification-service"; fi
+            if [ "$ORG" = "true" ]; then modules="$modules,org-service"; fi
 
             if [ -z "$modules" ]; then
               scope="nothing"
