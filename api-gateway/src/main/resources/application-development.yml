@@ -15,6 +15,11 @@ spring:
               predicates:
                 - Path=/api/org/**, /api/departments/**, /api/designations/**, /api/teams/**, /api/projects/**
 
+            - id: employee-service
+              uri: ${EMPLOYEE_SERVICE_URL}
+              predicates:
+                - Path=/api/employees/**
+
 app:
   security:
     jwt:
