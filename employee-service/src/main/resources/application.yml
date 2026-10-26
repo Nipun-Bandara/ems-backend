@@ -1,4 +1,7 @@
 spring:
+  servlet:
+    multipart:
+      enabled: false
   application:
     name: employee-service
   profiles:
@@ -18,3 +21,14 @@ logging:
   pattern:
     # Injected into the console and file patterns by Spring Boot's logback defaults.
     correlation: "[%X{correlationId:-}] "
+
+ems:
+  storage:
+    enabled: true
+    endpoint: ${STORAGE_ENDPOINT:}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:}
+    region: ${STORAGE_REGION:us-east-1}
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    path-style-access: ${STORAGE_PATH_STYLE_ACCESS:false}
+    allowed-origins: ${STORAGE_ALLOWED_ORIGINS:http://localhost:3000}

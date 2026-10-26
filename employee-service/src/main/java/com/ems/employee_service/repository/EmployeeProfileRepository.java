@@ -9,6 +9,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface EmployeeProfileRepository extends JpaRepository<EmployeeProfile, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from EmployeeProfile p where p.userId = :id")
+    java.util.Optional<EmployeeProfile> findForUpdate(@Param("id") Long id);
+
     // Replays with a different event ID must not overwrite an existing profile either.
     @Modifying
     @Query(value = """

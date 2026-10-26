@@ -14,6 +14,27 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class EmployeeProfile {
 
+    private String avatarObjectKey;
+    private String pendingAvatarKey;
+    private String pendingAvatarType;
+    private Long pendingAvatarSize;
+    private Instant pendingAvatarExpiresAt;
+
+    public void requestAvatar(String key, String type, long size, Instant expiresAt) {
+        pendingAvatarKey = key;
+        pendingAvatarType = type;
+        pendingAvatarSize = size;
+        pendingAvatarExpiresAt = expiresAt;
+    }
+
+    public void confirmAvatar() {
+        avatarObjectKey = pendingAvatarKey;
+        pendingAvatarKey = null;
+        pendingAvatarType = null;
+        pendingAvatarSize = null;
+        pendingAvatarExpiresAt = null;
+    }
+
     @Id
     @Column(name = "user_id", nullable = false)
     private Long userId;

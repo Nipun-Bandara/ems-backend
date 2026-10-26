@@ -1,3 +1,4 @@
 com.ems.common.web.CorrelationIdAutoConfiguration
 com.ems.common.messaging.RabbitTopologyConfig
 com.ems.common.outbox.OutboxAutoConfiguration
+com.ems.common.storage.StorageAutoConfiguration
