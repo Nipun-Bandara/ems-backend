@@ -7,6 +7,10 @@ at the repo root builds every module.
 | ------------------ | ---- | -------------------------------------------------- |
 | `api-gateway`      | 8080 | Single entry point, JWT check, CORS, rate limiting |
 | `identity-service` | 8081 | Users, roles, departments, authentication          |
+| `employee-service` | 8083 | Employee profiles projected from verified users   |
+
+See [employee-service setup and acceptance check](docs/employee-service.md) for
+its environment, event flow, and verification steps.
 
 The gateway is the only place a token is verified. It swaps the `Authorization`
 header for `X-User-Id` and `X-User-Roles` on the way through, and services

@@ -37,7 +37,7 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AuthServiceVerifyEmailTest {
 
-    private static final Instant NOW = Instant.parse("2026-09-03T10:15:30Z");
+    private static final Instant NOW = Instant.now();
 
     @Mock
     private com.ems.identity_service.repository.UserRepository userRepository;

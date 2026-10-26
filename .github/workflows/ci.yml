@@ -23,6 +23,7 @@ jobs:
       identity: ${{ steps.filter.outputs.identity }}
       notification: ${{ steps.filter.outputs.notification }}
       org: ${{ steps.filter.outputs.org }}
+      employee: ${{ steps.filter.outputs.employee }}
       common: ${{ steps.filter.outputs.common }}
       root: ${{ steps.filter.outputs.root }}
     steps:
@@ -40,6 +41,8 @@ jobs:
               - 'notification-service/**'
             org:
               - 'org-service/**'
+            employee:
+              - 'employee-service/**'
             common:
               - 'ems-common/**'
             root:
@@ -70,6 +73,7 @@ jobs:
           IDENTITY: ${{ needs.changes.outputs.identity }}
           NOTIFICATION: ${{ needs.changes.outputs.notification }}
           ORG: ${{ needs.changes.outputs.org }}
+          EMPLOYEE: ${{ needs.changes.outputs.employee }}
           COMMON: ${{ needs.changes.outputs.common }}
           ROOT: ${{ needs.changes.outputs.root }}
         run: |
@@ -84,6 +88,7 @@ jobs:
             if [ "$IDENTITY" = "true" ]; then modules="$modules,identity-service"; fi
             if [ "$NOTIFICATION" = "true" ]; then modules="$modules,notification-service"; fi
             if [ "$ORG" = "true" ]; then modules="$modules,org-service"; fi
+            if [ "$EMPLOYEE" = "true" ]; then modules="$modules,employee-service"; fi
 
             if [ -z "$modules" ]; then
               scope="nothing"

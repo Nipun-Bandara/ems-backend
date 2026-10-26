@@ -22,6 +22,7 @@
         <module>identity-service</module>
         <module>notification-service</module>
         <module>org-service</module>
+        <module>employee-service</module>
     </modules>
 
     <properties>
