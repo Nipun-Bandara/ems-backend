@@ -16,6 +16,21 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
         return buildResponse(HttpStatus.NOT_FOUND, "Not Found", "Resource not found", request);
     }
 
+    @ExceptionHandler({
+        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+        org.springframework.http.converter.HttpMessageNotReadableException.class
+    })
+    public ResponseEntity<ErrorResponse> handleMalformedInput(Exception ex, HttpServletRequest request) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "Invalid request value or malformed request body", request);
+    }
+
+    @ExceptionHandler(ProjectNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleProjectNotFound(
+            ProjectNotFoundException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage(), request);
+    }
+
     @ExceptionHandler(TeamNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleTeamNotFound(TeamNotFoundException ex, HttpServletRequest request) {
         return buildResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage(), request);
