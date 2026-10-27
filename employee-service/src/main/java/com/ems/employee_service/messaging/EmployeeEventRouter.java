@@ -24,6 +24,7 @@ public class EmployeeEventRouter {
     @RabbitListener(queues = MessagingConfig.WORK_QUEUE)
     public void onEvent(EventEnvelope<JsonNode> event) {
         switch (event.type()) {
+            case com.ems.employee_service.event.UserAssignmentUpdatedPayload.TYPE -> handler.onAssignmentUpdated(event);
             case UserVerifiedPayload.TYPE -> handler.onUserVerified(event);
             // Registration (including verification resends) does not create a profile.
             // Do not deserialize or log its verification token.

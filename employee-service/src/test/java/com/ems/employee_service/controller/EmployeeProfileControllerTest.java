@@ -17,13 +17,19 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(EmployeeProfileController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, com.ems.employee_service.security.EmployeeProfileAccess.class})
 class EmployeeProfileControllerTest {
     @Autowired
     MockMvc mvc;
 
     @MockitoBean
     EmployeeAvatarService avatars;
+
+    @MockitoBean
+    com.ems.employee_service.service.EmployeeProfileService profiles;
+
+    @MockitoBean
+    com.ems.employee_service.repository.EmployeeProfileRepository repository;
 
     @Test
     void anonymousCannotRequestUpload() throws Exception {
@@ -76,5 +82,84 @@ class EmployeeProfileControllerTest {
                     .andExpect(status().isBadRequest());
         }
         verifyNoInteractions(avatars);
+    }
+
+    private static final String VALID =
+            "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"phone\":\"+94771234567\",\"dateOfBirth\":\"1990-12-10\"}";
+
+    @Test
+    void selfEndpointsUseAuthenticatedIdentity() throws Exception {
+        mvc.perform(get("/api/employees/me").header("X-User-Id", "42")).andExpect(status().isOk());
+        mvc.perform(put("/api/employees/me")
+                        .header("X-User-Id", "42")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID))
+                .andExpect(status().isOk());
+        verify(avatars).getProfile(42L);
+        verify(profiles).update(eq(42L), any());
+    }
+
+    @Test
+    void onlyAdminAndHrCanUpdateById() throws Exception {
+        for (String role : new String[] {"EMPLOYEE", "DEPARTMENT_HEAD"}) {
+            mvc.perform(put("/api/employees/42")
+                            .header("X-User-Id", "43")
+                            .header("X-User-Roles", role)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(VALID))
+                    .andExpect(status().isForbidden());
+        }
+        for (String role : new String[] {"SYSTEM_ADMIN", "HR_MANAGER"}) {
+            mvc.perform(put("/api/employees/42")
+                            .header("X-User-Id", "43")
+                            .header("X-User-Roles", role)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(VALID))
+                    .andExpect(status().isOk());
+            mvc.perform(get("/api/employees/42").header("X-User-Id", "43").header("X-User-Roles", role))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void departmentHeadMustShareANonNullDepartment() throws Exception {
+        var caller = org.mockito.Mockito.mock(com.ems.employee_service.entity.EmployeeProfile.class);
+        var target = org.mockito.Mockito.mock(com.ems.employee_service.entity.EmployeeProfile.class);
+        when(repository.findById(43L)).thenReturn(java.util.Optional.of(caller));
+        when(repository.findById(42L)).thenReturn(java.util.Optional.of(target));
+        when(caller.getDepartmentId()).thenReturn(7L);
+        when(target.getDepartmentId()).thenReturn(7L);
+        mvc.perform(get("/api/employees/42").header("X-User-Id", "43").header("X-User-Roles", "DEPARTMENT_HEAD"))
+                .andExpect(status().isOk());
+        when(target.getDepartmentId()).thenReturn(8L);
+        mvc.perform(get("/api/employees/42").header("X-User-Id", "43").header("X-User-Roles", "DEPARTMENT_HEAD"))
+                .andExpect(status().isForbidden());
+        when(caller.getDepartmentId()).thenReturn(null);
+        when(target.getDepartmentId()).thenReturn(null);
+        mvc.perform(get("/api/employees/42").header("X-User-Id", "43").header("X-User-Roles", "DEPARTMENT_HEAD"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rejectsInvalidProfileFields() throws Exception {
+        for (String body : new String[] {
+            "{}",
+            VALID.replace("Ada", " "),
+            VALID.replace("+94771234567", "bad-phone"),
+            VALID.replace("1990-12-10", "2990-12-10"),
+            VALID.substring(0, VALID.length() - 1) + ",\"designationId\":0}",
+            VALID.substring(0, VALID.length() - 1) + ",\"reportingManagerUserId\":-1}",
+            VALID.substring(0, VALID.length() - 1) + ",\"joinDate\":\"2990-01-01\"}",
+            VALID.substring(0, VALID.length() - 1) + ",\"emergencyContactPhone\":\"bad\"}",
+            VALID.substring(0, VALID.length() - 1) + ",\"emergencyContactName\":\" \"}",
+            VALID.substring(0, VALID.length() - 1) + ",\"address\":\" \"}"
+        }) {
+            mvc.perform(put("/api/employees/me")
+                            .header("X-User-Id", "42")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(profiles);
     }
 }

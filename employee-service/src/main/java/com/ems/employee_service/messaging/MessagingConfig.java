@@ -18,6 +18,11 @@ public class MessagingConfig {
 
     @Bean
     public Declarables employeeTopology() {
-        return QueueFactory.declare(SERVICE_NAME, List.of(UserVerifiedPayload.TYPE, USER_REGISTERED));
+        return QueueFactory.declare(
+                SERVICE_NAME,
+                List.of(
+                        UserVerifiedPayload.TYPE,
+                        USER_REGISTERED,
+                        com.ems.employee_service.event.UserAssignmentUpdatedPayload.TYPE));
     }
 }

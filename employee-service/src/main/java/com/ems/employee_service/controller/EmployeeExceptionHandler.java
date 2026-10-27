@@ -22,6 +22,14 @@ public class EmployeeExceptionHandler extends BaseExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", "A valid JSON request body is required", request);
     }
 
+    @ExceptionHandler({
+        org.springframework.web.method.annotation.HandlerMethodValidationException.class,
+        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
+    })
+    public ResponseEntity<ErrorResponse> invalidParameter(Exception ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", "A valid positive user ID is required", request);
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ErrorResponse> responseStatus(ResponseStatusException ex, HttpServletRequest request) {
         var status = HttpStatus.valueOf(ex.getStatusCode().value());

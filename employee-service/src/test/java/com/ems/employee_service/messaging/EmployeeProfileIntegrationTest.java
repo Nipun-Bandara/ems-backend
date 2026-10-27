@@ -132,7 +132,7 @@ class EmployeeProfileIntegrationTest {
                     .getResponse()
                     .getContentAsString();
             var result = json.readTree(profile);
-            assertThat(result.has("avatarObjectKey")).isFalse();
+            assertThat(result.get("avatarObjectKey").asText()).isEqualTo(key);
             var get = java.net.http.HttpRequest.newBuilder(
                             java.net.URI.create(result.get("avatarUrl").asText()))
                     .GET()
@@ -153,6 +153,8 @@ class EmployeeProfileIntegrationTest {
     void clearDatabase() {
         jdbc.update("DELETE FROM processed_event");
         profiles.deleteAll();
+        jdbc.update("DELETE FROM employee_assignment");
+        jdbc.update("DELETE FROM outbox_event");
     }
 
     @Test
@@ -212,6 +214,61 @@ class EmployeeProfileIntegrationTest {
         publish(verified(UUID.randomUUID(), "ada@ems.local"), "employee.retry");
         await().atMost(Duration.ofSeconds(15))
                 .untilAsserted(() -> assertThat(profiles.count()).isEqualTo(1));
+    }
+
+    @Test
+    void completesProfilePersistsAndPublishesWhileOtherEmployeeIsForbidden() throws Exception {
+        handler.onUserVerified(verified(UUID.randomUUID(), "ada@ems.local"));
+        var body = """
+                {"firstName":"Ada","lastName":"Lovelace","phone":"+94771234567",
+                 "dateOfBirth":"1990-12-10","address":"Colombo","emergencyContactName":"Grace",
+                 "emergencyContactPhone":"+94771234568","designationId":3,"joinDate":"2020-01-01",
+                 "reportingManagerUserId":99}
+                """;
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/employees/me")
+                        .header("X-User-Id", "42")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                        .isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/employees/me")
+                        .header("X-User-Id", "42"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.firstName")
+                        .value("Ada"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.address")
+                        .value("Colombo"));
+        assertThat(profiles.findById(42L).orElseThrow().getReportingManagerUserId())
+                .isEqualTo(99L);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE type = 'employee.profile.updated'", Integer.class))
+                .isEqualTo(1);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/employees/42")
+                        .header("X-User-Id", "43")
+                        .header("X-User-Roles", "EMPLOYEE"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                        .isForbidden());
+    }
+
+    @Test
+    void assignmentBeforeVerificationAndStaleEventsAreHandled() {
+        assignment(7L, VERIFIED_AT);
+        handler.onUserVerified(verified(UUID.randomUUID(), "ada@ems.local"));
+        assertThat(profiles.findById(42L).orElseThrow().getDepartmentId()).isEqualTo(7L);
+        assignment(8L, VERIFIED_AT.plusSeconds(10));
+        assignment(9L, VERIFIED_AT.plusSeconds(5));
+        assertThat(profiles.findById(42L).orElseThrow().getDepartmentId()).isEqualTo(8L);
+        assignment(null, VERIFIED_AT.plusSeconds(20));
+        assertThat(profiles.findById(42L).orElseThrow().getDepartmentId()).isNull();
+    }
+
+    private void assignment(Long departmentId, Instant at) {
+        handler.onAssignmentUpdated(new EventEnvelope<>(
+                UUID.randomUUID(),
+                "user.assignment.updated",
+                at,
+                null,
+                json.valueToTree(
+                        new com.ems.employee_service.event.UserAssignmentUpdatedPayload(42L, departmentId, at))));
     }
 
     private EventEnvelope<JsonNode> verified(UUID id, String email) {

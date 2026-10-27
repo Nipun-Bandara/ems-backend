@@ -17,7 +17,8 @@ import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 class EmployeeAvatarServiceTest {
     EmployeeProfileRepository repository = mock(EmployeeProfileRepository.class);
     StorageService storage = mock(StorageService.class);
-    EmployeeAvatarService service = new EmployeeAvatarService(repository, storage);
+    EmployeeAvatarService service =
+            new EmployeeAvatarService(repository, storage, mock(com.ems.common.outbox.OutboxPublisher.class));
     EmployeeProfile profile = new EmployeeProfile();
 
     @BeforeEach
