@@ -95,9 +95,9 @@ class LeaveIntegrationTest {
         assertThat(jdbc.queryForList(
                         "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
                         String.class))
-                .containsExactly("1", "2");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event", Integer.class))
-                .isZero();
+                .containsExactly("1", "2", "3");
+        assertThat(jdbc.queryForObject("SELECT to_regclass('outbox_event')::text", String.class))
+                .isEqualTo("outbox_event");
         assertThat(admin.getQueueProperties("leave.q")).isNotNull();
         assertThat(admin.getQueueProperties("leave.retry")).isNotNull();
         assertThat(admin.getQueueProperties("leave.parked")).isNotNull();
@@ -240,6 +240,211 @@ class LeaveIntegrationTest {
         assertThat(row(46L)).containsEntry("department_id", 12L).containsEntry("active", null);
         handler.apply(assignment(46L, 99L, AT.plusSeconds(11)));
         assertThat(row(46L).get("department_id")).isEqualTo(12L);
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void bindLeaveAuditEvents() {
+        admin.declareQueue(new org.springframework.amqp.core.Queue("leave.balance-test", true, false, false));
+        admin.declareBinding(new org.springframework.amqp.core.Binding(
+                "leave.balance-test",
+                org.springframework.amqp.core.Binding.DestinationType.QUEUE,
+                "ems.events",
+                "leave.#",
+                null));
+    }
+
+    @Autowired
+    com.ems.leave_service.balance.LeaveBalanceService balances;
+
+    @Autowired
+    com.ems.leave_service.balance.WorkingCalendar calendar;
+
+    private UUID entitlement(long employee, String days) {
+        jdbc.update("INSERT INTO employee_projection(user_id,active) VALUES (?,true) ON CONFLICT DO NOTHING", employee);
+        var type = balances.saveType(
+                null,
+                new com.ems.leave_service.balance.LeaveModels.TypeInput("T" + employee, "Annual " + employee, true));
+        return balances.allocate(
+                        new com.ems.leave_service.balance.LeaveModels.Allocation(
+                                employee, type.id(), 2026, new java.math.BigDecimal(days), "Annual allocation"),
+                        1)
+                .id();
+    }
+
+    @Test
+    void allocationAdjustmentReloadAuthorizationAndOutbox() throws Exception {
+        UUID id = entitlement(5001, "10.00");
+        String path = "/api/leaves/entitlements/" + id + "/adjustments";
+        String body =
+                "{\"days\":\"2.00\",\"idempotencyKey\":\"annual-correction\",\"reason\":\"Contract grants two extra days\"}";
+        for (int i = 0; i < 2; i++)
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                            .header("X-User-Id", "1")
+                            .header("X-User-Roles", "HR_MANAGER")
+                            .contentType("application/json")
+                            .content(body))
+                    .andExpect(status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                                "/api/leaves/balances/me?year=2026")
+                        .header("X-User-Id", "5001")
+                        .header("X-User-Roles", "EMPLOYEE"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].available")
+                        .value("12.00"));
+        assertThat(balances.balance(id).available()).isEqualTo("12.00");
+        await().atMost(Duration.ofSeconds(15))
+                .untilAsserted(() -> assertThat(jdbc.queryForObject(
+                                "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND sent_at IS NOT NULL",
+                                Integer.class,
+                                id.toString()))
+                        .isEqualTo(2));
+        var delivered = new ArrayList<String>();
+        org.springframework.amqp.core.Message message;
+        while ((message = rabbit.receive("leave.balance-test", 1000)) != null) {
+            String content = new String(message.getBody(), java.nio.charset.StandardCharsets.UTF_8);
+            if (content.contains(id.toString())) delivered.add(content);
+        }
+        assertThat(delivered).hasSize(2);
+        assertThat(delivered).anyMatch(v -> v.contains("leave.entitlement.allocated"));
+        assertThat(delivered)
+                .anyMatch(v -> v.contains("leave.balance.adjusted") && v.contains("Contract grants two extra days"));
+        assertThat(balances.entries(id)).hasSize(1);
+        var entry = balances.entries(id).getFirst();
+        assertThat(entry.actorId()).isEqualTo(1);
+        assertThat(entry.reason()).isEqualTo("Contract grants two extra days");
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=?", Integer.class, id.toString()))
+                .isEqualTo(2);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                        .header("X-User-Id", "1")
+                        .header("X-User-Roles", "HR_MANAGER")
+                        .contentType("application/json")
+                        .content(body.replace("2.00", "3.00")))
+                .andExpect(status().isConflict());
+        for (String role : List.of("EMPLOYEE", "USER", "DEPARTMENT_HEAD", "FINANCE_MANAGER")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                            .header("X-User-Id", "5001")
+                            .header("X-User-Roles", role)
+                            .contentType("application/json")
+                            .content(body))
+                    .andExpect(status().isForbidden());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                                    "/api/leaves/entitlements?employeeId=5001&year=2026")
+                            .header("X-User-Id", "5002")
+                            .header("X-User-Roles", role))
+                    .andExpect(status().isForbidden());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                    "/api/leaves/entitlements")
+                            .header("X-User-Id", "5001")
+                            .header("X-User-Roles", role)
+                            .contentType("application/json")
+                            .content("{\"employeeId\":5001,\"typeId\":\""
+                                    + balances.balance(id).typeId()
+                                    + "\",\"year\":2026,\"days\":\"10.00\",\"reason\":\"Forbidden allocation\"}"))
+                    .andExpect(status().isForbidden());
+        }
+        jdbc.update("INSERT INTO employee_projection(user_id,active) VALUES (5002,true)");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                                "/api/leaves/balances/me?year=2026&employeeId=5001")
+                        .header("X-User-Id", "5002")
+                        .header("X-User-Roles", "EMPLOYEE"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .json("[]"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/leaves/balances/me?year=2026"))
+                .andExpect(status().isUnauthorized());
+        assertThatThrownBy(
+                        () -> jdbc.update("UPDATE leave_balance_entry SET reason='rewrite' WHERE entitlement_id=?", id))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM leave_balance_entry WHERE entitlement_id=?", id))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+    }
+
+    @Test
+    void lastDayConcurrentReservationAndSettlementAreAtomic() throws Exception {
+        UUID id = entitlement(5003, "1.00");
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var succeeded = new java.util.concurrent.atomic.AtomicInteger();
+        var won = new java.util.concurrent.atomic.AtomicReference<UUID>();
+        try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var tasks = new ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 2; i++)
+                tasks.add(pool.submit(() -> {
+                    start.await();
+                    UUID reservation = UUID.randomUUID();
+                    try {
+                        balances.reserve(id, reservation, java.math.BigDecimal.ONE, 5003, "Pending leave");
+                        won.set(reservation);
+                        succeeded.incrementAndGet();
+                    } catch (org.springframework.web.server.ResponseStatusException ex) {
+                        assertThat(ex.getStatusCode().value()).isEqualTo(409);
+                    }
+                    return null;
+                }));
+            start.countDown();
+            for (var task : tasks) task.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(succeeded.get()).isEqualTo(1);
+        assertThat(balances.balance(id).reserved()).isEqualTo("1.00");
+        assertThat(balances.balance(id).available()).isEqualTo("0.00");
+        assertThatThrownBy(() -> balances.adjust(
+                        id,
+                        new com.ems.leave_service.balance.LeaveModels.Adjustment(
+                                new java.math.BigDecimal("-0.01"), "negative", "Cannot overdraw"),
+                        1))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        balances.settle(id, won.get(), true, 1, "Approved leave");
+        balances.settle(id, won.get(), true, 1, "Retry approval");
+        assertThat(balances.balance(id).taken()).isEqualTo("1.00");
+        assertThat(balances.balance(id).reserved()).isEqualTo("0.00");
+        assertThat(balances.balance(id).available()).isEqualTo("0.00");
+        assertThat(balances.entries(id)).hasSize(1);
+    }
+
+    @Test
+    void concurrentAdjustmentRetriesAllocateOnlyOnceAndKeepPrecision() throws Exception {
+        UUID id = entitlement(5004, "10.00");
+        var input = new com.ems.leave_service.balance.LeaveModels.Adjustment(
+                new java.math.BigDecimal("2.25"), "same-key", "Correction");
+        try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var tasks = new ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 8; i++) tasks.add(pool.submit(() -> balances.adjust(id, input, 1)));
+            for (var task : tasks) task.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(balances.entries(id)).hasSize(1);
+        assertThat(balances.balance(id).available()).isEqualTo("12.25");
+        assertThatThrownBy(() -> balances.adjust(
+                        id,
+                        new com.ems.leave_service.balance.LeaveModels.Adjustment(
+                                new java.math.BigDecimal("0.001"), "precision", "Too precise"),
+                        1))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        var b = balances.balance(id);
+        assertThatThrownBy(() -> balances.allocate(
+                        new com.ems.leave_service.balance.LeaveModels.Allocation(
+                                5004, b.typeId(), 2026, java.math.BigDecimal.TEN, "Duplicate"),
+                        1))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
+    @Test
+    void calendarExcludesConfiguredHolidayAndWeekendAndReleaseRestoresBalance() {
+        assertThat(calendar.policy().timezone()).isEqualTo("Asia/Colombo");
+        var monday = java.time.LocalDate.of(2099, 1, 5);
+        calendar.saveHoliday(
+                new com.ems.leave_service.balance.WorkingCalendar.Holiday(monday, "Synthetic test closure"));
+        assertThat(calendar.workingDays(monday, monday.plusDays(6))).isEqualTo(4);
+        calendar.deleteHoliday(monday);
+        assertThat(calendar.workingDays(monday, monday.plusDays(6))).isEqualTo(5);
+        assertThatThrownBy(() -> calendar.workingDays(monday, monday.minusDays(1)))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        UUID id = entitlement(5005, "0.50"), reservation = UUID.randomUUID();
+        balances.reserve(id, reservation, new java.math.BigDecimal("0.50"), 5005, "Half day pending");
+        balances.settle(id, reservation, false, 5005, "Cancelled");
+        balances.settle(id, reservation, false, 5005, "Retry");
+        assertThat(balances.balance(id).available()).isEqualTo("0.50");
+        assertThat(balances.balance(id).taken()).isEqualTo("0.00");
     }
 
     private Map<String, Object> row(long id) {
