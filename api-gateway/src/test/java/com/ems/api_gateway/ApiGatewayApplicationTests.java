@@ -6,6 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest(
         properties = {
             "spring.config.import=",
+            "ALLOWED_ORIGINS=http://localhost:3000",
             "IDENTITY_SERVICE_URL=http://localhost:8081",
             "ORG_SERVICE_URL=http://localhost:8084",
             "EMPLOYEE_SERVICE_URL=http://localhost:8083",

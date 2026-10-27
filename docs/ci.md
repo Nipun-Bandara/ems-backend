@@ -17,7 +17,10 @@ Run `mvn -B clean verify` from the backend root with Docker running. The tests
 create isolated containers; they do not need your development services or databases.
 Identity context tests override optional .env imports, JWT test settings and
 use isolated PostgreSQL, RabbitMQ and Redis containers. Gateway context tests
-also provide explicit route/JWKS configuration instead of requiring a local .env.
+also provide explicit route/JWKS configuration and a test-only `ALLOWED_ORIGINS`
+value instead of requiring a local .env. Production CORS configuration stays required.
+When investigating a CI-only failure, verify a copy of tracked source without local
+`.env` files: a passing development checkout can mask missing test properties.
 Do not skip integration tests to make a PR green.
 
 ## MinIO integration-test image
