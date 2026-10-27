@@ -49,6 +49,7 @@ public class EmployeeProfileService {
         data.put("reportingManagerUserId", p.getReportingManagerUserId());
         data.put("departmentId", p.getDepartmentId());
         data.put("avatarObjectKey", p.getAvatarObjectKey());
+        data.put("cvObjectKey", p.getCvObjectKey());
         return data;
     }
 }

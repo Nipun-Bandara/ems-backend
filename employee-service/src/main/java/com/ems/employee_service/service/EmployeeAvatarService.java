@@ -51,7 +51,8 @@ public class EmployeeAvatarService {
             java.time.LocalDate joinDate,
             Long reportingManagerUserId,
             Long departmentId,
-            String avatarObjectKey) {}
+            String avatarObjectKey,
+            String cvObjectKey) {}
 
     @Transactional
     public Upload requestUpload(Long id, String contentType, long size) {
@@ -125,6 +126,7 @@ public class EmployeeAvatarService {
                 p.getJoinDate(),
                 p.getReportingManagerUserId(),
                 p.getDepartmentId(),
-                p.getAvatarObjectKey());
+                p.getAvatarObjectKey(),
+                p.getCvObjectKey());
     }
 }

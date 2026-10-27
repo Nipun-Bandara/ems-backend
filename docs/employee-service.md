@@ -103,3 +103,45 @@ The profile UI uses those generated schemas for its query and mutation types.
 The integration suite also verifies profile completion, database persistence,
 outbox publication, another employee's 403, early/stale assignments, and removal
 of a department assignment.
+
+## CV sections and documents
+
+Authenticated employees can manage their own CV entries. SYSTEM_ADMIN and HR_MANAGER
+can manage any employee's entries. All nested GET, POST, PUT and DELETE routes use
+this policy; section IDs are always scoped to the user ID in the route.
+
+- `/api/employees/{userId}/skills`: name, proficiency (BEGINNER, INTERMEDIATE,
+  ADVANCED, EXPERT), yearsOfExperience (0–100, up to one decimal place).
+- `/api/employees/{userId}/education`: institution, qualification, fieldOfStudy,
+  startYear, nullable endYear for ongoing education, grade.
+- `/api/employees/{userId}/experience`: company, title, startDate, nullable endDate,
+  description, isCurrent. Current roles have no end date; completed roles require
+  an end date on or after the start date. Dates cannot be in the future.
+
+GET returns an ordered list. POST returns the created entry (201), PUT `/{id}`
+returns the updated entry (200), and DELETE `/{id}` returns 204. Unknown or
+mismatched entry IDs return 404. Flyway V5 adds the tables, employee foreign keys,
+indexes, range constraints and CV upload state.
+
+CVs use the private `ems-documents` bucket and the shared StorageService:
+
+1. POST `/api/employees/{userId}/cv/upload-url` with `contentType` and `size`.
+   PDF, DOC and DOCX are supported, up to 10 MiB.
+2. PUT file bytes to the returned `uploadUrl` with the returned `headers`.
+3. PUT `/api/employees/{userId}/cv` with `objectKey`. Confirmation verifies the
+   issued key, five-minute expiry, exact object size and declared content type
+   before persisting `cvObjectKey` on the profile.
+4. GET `/api/employees/{userId}/cv` returns `cvObjectKey` and a fresh five-minute
+   signed `downloadUrl`, both null before the first confirmed upload. Request a
+   fresh URL when downloading. The profile response also includes `cvObjectKey`.
+
+The profile UI includes Skills, Education and Experience tabs with inline lists,
+add/edit dialogs and deletion confirmation. Its CV control uses `useFileUpload`,
+shows progress and renews download URLs on demand. Storage validates metadata;
+it does not inspect document contents. Superseded or abandoned CV objects are
+retained, following the avatar retention policy described in `file-storage.md`.
+
+`EmployeeProfileIntegrationTest` verifies all three sections through create, list,
+update and delete against PostgreSQL, rejects mismatched employee/entry IDs, and
+uploads/downloads a CV through real signed MinIO URLs. Controller and service tests
+cover permissions, invalid fields, upload expiry and metadata mismatches.

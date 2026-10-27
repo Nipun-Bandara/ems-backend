@@ -147,6 +147,138 @@ class EmployeeProfileIntegrationTest {
         }
     }
 
+    @Test
+    void cvUploadsDirectlyToMinioAndDownloadsUsingSignedUrl() throws Exception {
+        handler.onUserVerified(verified(UUID.randomUUID(), "ada@ems.local"));
+        byte[] image = "%PDF-1.4 test CV".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String body = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/api/employees/42/cv/upload-url")
+                        .header("X-User-Id", "42")
+                        .contentType("application/json")
+                        .content("{\"contentType\":\"application/pdf\",\"size\":" + image.length + "}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                        .isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        var upload = json.readTree(body);
+        String key = upload.get("objectKey").asText();
+        try {
+            var http = java.net.http.HttpClient.newHttpClient();
+            var put = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(upload.get("uploadUrl").asText()))
+                    .header("Content-Type", "application/pdf")
+                    .header("If-None-Match", "*")
+                    .PUT(java.net.http.HttpRequest.BodyPublishers.ofByteArray(image))
+                    .build();
+            assertThat(http.send(put, java.net.http.HttpResponse.BodyHandlers.discarding())
+                            .statusCode())
+                    .isEqualTo(200);
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/employees/42/cv")
+                            .header("X-User-Id", "42")
+                            .contentType("application/json")
+                            .content(json.writeValueAsString(Map.of("objectKey", key))))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isOk());
+            String profile = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                                    "/api/employees/42/cv")
+                            .header("X-User-Id", "42"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            var result = json.readTree(profile);
+            assertThat(result.get("cvObjectKey").asText()).isEqualTo(key);
+            var get = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(result.get("downloadUrl").asText()))
+                    .GET()
+                    .build();
+            var downloaded = http.send(get, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(downloaded.statusCode()).isEqualTo(200);
+            assertThat(downloaded.body()).isEqualTo(image);
+            assertThat(profiles.findById(42L).orElseThrow().getCvObjectKey()).isEqualTo(key);
+        } finally {
+            storage.delete("ems-documents", key);
+        }
+    }
+
+    @Test
+    void allCvSectionsRoundTripAndCannotUseAnotherEmployeesEntryId() throws Exception {
+        handler.onUserVerified(verified(UUID.randomUUID(), "ada@ems.local"));
+        for (String[] section : new String[][] {
+            {
+                "skills",
+                "{\"name\":\"Java\",\"proficiency\":\"ADVANCED\",\"yearsOfExperience\":3.5}",
+                "Java",
+                "Kotlin",
+                "name"
+            },
+            {
+                "education",
+                "{\"institution\":\"University\",\"qualification\":\"BSc\",\"fieldOfStudy\":\"Computing\",\"startYear\":2018,\"endYear\":2022,\"grade\":\"A\"}",
+                "University",
+                "College",
+                "institution"
+            },
+            {
+                "experience",
+                "{\"company\":\"Acme\",\"title\":\"Engineer\",\"startDate\":\"2022-01-01\",\"endDate\":null,\"description\":\"Development\",\"isCurrent\":true}",
+                "Acme",
+                "Example",
+                "company"
+            }
+        }) {
+            String url = "/api/employees/42/" + section[0];
+            var created = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                            .header("X-User-Id", "42")
+                            .contentType("application/json")
+                            .content(section[1]))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isCreated())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            long id = json.readTree(created).get("id").asLong();
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url)
+                            .header("X-User-Id", "42"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
+                                    "$[0]." + section[4])
+                            .value(section[2]));
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(url + "/" + id)
+                            .header("X-User-Id", "42")
+                            .contentType("application/json")
+                            .content(section[1].replace(section[2], section[3])))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isOk());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url)
+                            .header("X-User-Id", "42"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
+                                    "$[0]." + section[4])
+                            .value(section[3]));
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                                    "/api/employees/43/" + section[0] + "/" + id)
+                            .header("X-User-Id", "43")
+                            .contentType("application/json")
+                            .content(section[1]))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isNotFound());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+                                    "/api/employees/43/" + section[0] + "/" + id)
+                            .header("X-User-Id", "43"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isNotFound());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(url + "/" + id)
+                            .header("X-User-Id", "42"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isNoContent());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url)
+                            .header("X-User-Id", "42"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                            .json("[]"));
+        }
+    }
+
     private static final Instant VERIFIED_AT = Instant.parse("2026-10-01T10:00:00Z");
 
     @BeforeEach
