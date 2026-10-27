@@ -44,7 +44,30 @@ public final class Models {
             Long submittedBy,
             Instant reviewedAt,
             Long reviewedBy,
-            String reviewReason) {}
+            String reviewReason,
+            List<Decision> decisions) {}
+
+    public record Permissions(boolean reviewer, boolean active) {}
+
+    public record Decision(UUID id, Status outcome, long reviewerId, Instant decidedAt, String reason, long version) {}
+
+    public record Review(
+            @NotNull @Min(0) Long version, @Size(max = 500) String reason) {}
+
+    public record Summary(long employeeId, LocalDate weekStart, long approvedMinutes) {}
+
+    public record EmployeeScope(
+            @NotNull Boolean active,
+            @Positive Long departmentId,
+            @Positive Long reportingManagerUserId,
+            @NotNull @PastOrPresent Instant asOf) {}
+
+    public enum ReviewerRole {
+        DEPARTMENT_HEAD,
+        HR_MANAGER
+    }
+
+    public record Reviewer(@NotNull @PastOrPresent Instant asOf, ReviewerRole role) {}
 
     public record Calendar(String timezone, LocalDate currentWeekStart) {}
 

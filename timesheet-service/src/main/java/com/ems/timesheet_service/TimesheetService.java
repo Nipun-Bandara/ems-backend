@@ -19,13 +19,19 @@ public class TimesheetService {
     private final ProjectionStore projections;
     private final OrganizationCalendar calendar;
     private final OutboxPublisher outbox;
+    private final ReviewScope scope;
 
     public TimesheetService(
-            JdbcTemplate jdbc, ProjectionStore projections, OrganizationCalendar calendar, OutboxPublisher outbox) {
+            JdbcTemplate jdbc,
+            ProjectionStore projections,
+            OrganizationCalendar calendar,
+            OutboxPublisher outbox,
+            ReviewScope scope) {
         this.jdbc = jdbc;
         this.projections = projections;
         this.calendar = calendar;
         this.outbox = outbox;
+        this.scope = scope;
     }
 
     private void actorLock(long actor) {
@@ -100,6 +106,8 @@ public class TimesheetService {
         actorLock(actor);
         Sheet sheet = load(id, actor, true);
         draft(sheet, version);
+        if (!sheet.decisions().isEmpty())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reviewed sheets must be retained for audit");
         audit(id, actor, "DELETED", sheet.version());
         jdbc.update("DELETE FROM timesheet WHERE id=?", id);
     }
@@ -108,7 +116,7 @@ public class TimesheetService {
         actorLock(actor);
         Sheet sheet = load(id, actor, true);
         // A retry after a lost response returns the immutable result, even with the original version.
-        if (sheet.submittedAt() != null) return sheet;
+        if (sheet.status() != Status.DRAFT && sheet.submittedAt() != null) return sheet;
         draft(sheet, input.version());
         projections.lock(false);
         projections.active(actor);
@@ -124,6 +132,123 @@ public class TimesheetService {
         audit(id, actor, "SUBMITTED", result.version());
         outbox.publish("timesheet", id.toString(), "timesheet.submitted", result);
         return result;
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<Sheet> inbox(long actor) {
+        scope.requireReviewer(actor);
+        return jdbc.query(
+                "SELECT t.* FROM timesheet t WHERE status='SUBMITTED' AND " + ReviewScope.ELIGIBLE
+                        + " ORDER BY week_start,id",
+                this::map,
+                actor);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public Sheet reviewDetail(UUID id, long actor) {
+        Sheet sheet = reviewLoad(id, false);
+        scope.require(sheet.employeeId(), actor);
+        if (sheet.status() == Status.DRAFT)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Draft entries are private to the owner");
+        return sheet;
+    }
+
+    private Sheet reviewLoad(UUID id, boolean lock) {
+        var rows = jdbc.query("SELECT * FROM timesheet WHERE id=?" + (lock ? " FOR UPDATE" : ""), this::map, id);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Timesheet not found");
+        return rows.getFirst();
+    }
+
+    public Sheet decide(UUID id, long actor, Review input, boolean reject) {
+        Sheet sheet = reviewLoad(id, true);
+        projections.lock(false);
+        scope.require(sheet.employeeId(), actor);
+        String reason = input.reason() == null ? "" : input.reason().trim();
+        if (reject && reason.isBlank()) throw bad("A rejection reason is required");
+        if (sheet.status() != Status.SUBMITTED || sheet.version() != input.version())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Timesheet changed; reload before reviewing");
+        String outcome = reject ? "REJECTED" : "APPROVED";
+        int changed = jdbc.update(
+                "UPDATE timesheet SET status=?,version=version+1,updated_at=now(),updated_by=?,reviewed_at=now(),reviewed_by=?,review_reason=? WHERE id=? AND status='SUBMITTED' AND version=?",
+                outcome,
+                actor,
+                actor,
+                reason,
+                id,
+                input.version());
+        if (changed != 1)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Timesheet changed; reload before reviewing");
+        UUID decision = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO timesheet_decision(id,sheet_id,outcome,reviewer_id,reason,version) VALUES (?,?,?,?,?,?)",
+                decision,
+                id,
+                outcome,
+                actor,
+                reason,
+                sheet.version() + 1);
+        Sheet result = reviewLoad(id, false);
+        audit(id, actor, outcome, result.version());
+        outbox.publish(
+                "timesheet",
+                id.toString(),
+                "timesheet.decided",
+                Map.of(
+                        "decisionId",
+                        decision,
+                        "sheetId",
+                        id,
+                        "employeeId",
+                        sheet.employeeId(),
+                        "weekStart",
+                        sheet.weekStart(),
+                        "outcome",
+                        outcome,
+                        "reviewerId",
+                        actor,
+                        "decidedAt",
+                        result.reviewedAt(),
+                        "reason",
+                        reason,
+                        "version",
+                        result.version()));
+        return result;
+    }
+
+    public Sheet reopen(UUID id, long actor, Submit input) {
+        actorLock(actor);
+        Sheet sheet = load(id, actor, true);
+        projections.lock(false);
+        projections.active(actor);
+        if (sheet.status() != Status.REJECTED || sheet.version() != input.version())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only the current rejected sheet may be reopened");
+        jdbc.update(
+                "UPDATE timesheet SET status='DRAFT',version=version+1,updated_at=now(),updated_by=?,submitted_at=NULL,submitted_by=NULL,reviewed_at=NULL,reviewed_by=NULL,review_reason=NULL WHERE id=?",
+                actor,
+                id);
+        audit(id, actor, "REOPENED", sheet.version() + 1);
+        return get(id, actor);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<Summary> summary(long actor, LocalDate from, LocalDate to, Long employee, Long department) {
+        calendar.validateWeek(from);
+        calendar.validateWeek(to);
+        if (to.isBefore(from) || to.isAfter(from.plusWeeks(52))) throw bad("Choose a range of at most 53 weeks");
+        if (employee != null && department != null) throw bad("Choose employee or department scope");
+        projections.active(actor);
+        long selected = employee == null ? actor : employee;
+        if (department != null) scope.department(department, actor);
+        else if (selected != actor) scope.require(selected, actor);
+        return jdbc.query(
+                "SELECT t.employee_id,t.week_start,coalesce(sum(e.minutes),0) minutes FROM timesheet t JOIN employee_projection p ON p.user_id=t.employee_id LEFT JOIN timesheet_entry e ON e.sheet_id=t.id WHERE t.status='APPROVED' AND t.week_start BETWEEN ? AND ? AND "
+                        + (department == null ? "t.employee_id=?" : "p.department_id=?")
+                        + " GROUP BY t.employee_id,t.week_start ORDER BY t.employee_id,t.week_start",
+                (r, n) -> new Summary(
+                        r.getLong("employee_id"), r.getDate("week_start").toLocalDate(), r.getLong("minutes")),
+                from,
+                to,
+                department == null ? selected : department);
     }
 
     private void draft(Sheet sheet, long version) {
@@ -199,6 +324,16 @@ public class TimesheetService {
                 rs.getObject("submitted_by", Long.class),
                 instant(rs, "reviewed_at"),
                 rs.getObject("reviewed_by", Long.class),
-                rs.getString("review_reason"));
+                rs.getString("review_reason"),
+                jdbc.query(
+                        "SELECT * FROM timesheet_decision WHERE sheet_id=? ORDER BY version",
+                        (r, n) -> new Decision(
+                                r.getObject("id", UUID.class),
+                                Status.valueOf(r.getString("outcome")),
+                                r.getLong("reviewer_id"),
+                                r.getTimestamp("decided_at").toInstant(),
+                                r.getString("reason"),
+                                r.getLong("version")),
+                        id));
     }
 }

@@ -54,6 +54,13 @@ class TimesheetIntegrationTest {
 
     @org.junit.jupiter.api.BeforeEach
     void submissionsHaveADownstreamSubscriber() {
+        broker.declareQueue(new org.springframework.amqp.core.Queue("timesheet.test-decisions", true));
+        broker.declareBinding(new org.springframework.amqp.core.Binding(
+                "timesheet.test-decisions",
+                org.springframework.amqp.core.Binding.DestinationType.QUEUE,
+                "ems.events",
+                "timesheet.decided",
+                null));
         broker.declareQueue(new org.springframework.amqp.core.Queue("timesheet.test-submissions", true));
         broker.declareBinding(new org.springframework.amqp.core.Binding(
                 "timesheet.test-submissions",
@@ -61,6 +68,196 @@ class TimesheetIntegrationTest {
                 "ems.events",
                 "timesheet.submitted",
                 null));
+    }
+
+    @Autowired
+    ReviewScope reviewScope;
+
+    private void scope(long user, Long department, Long manager) {
+        reviewScope.reconcile(user, new Models.EmployeeScope(true, department, manager, AT.plusSeconds(10)));
+    }
+
+    private String submitted(long user, long project) throws Exception {
+        seed(user, project);
+        String id = create(user).path("id").asText();
+        mvc.perform(put("/api/timesheets/" + id)
+                        .header("X-User-Id", user)
+                        .contentType("application/json")
+                        .content(entries(project, 60, 30)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/timesheets/" + id + "/submit")
+                        .header("X-User-Id", user)
+                        .contentType("application/json")
+                        .content("{\"version\":1}"))
+                .andExpect(status().isOk());
+        return id;
+    }
+
+    private int decision(String id, long actor, String action, long version, String reason) throws Exception {
+        return mvc.perform(post("/api/timesheets/" + id + "/" + action)
+                        .header("X-User-Id", actor)
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("version", version, "reason", reason))))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+    }
+
+    @Test
+    void managerScopeAtomicDecisionAndSummary() throws Exception {
+        String id = submitted(401, 501);
+        scope(402, 10L, null);
+        scope(403, 20L, null);
+        scope(401, 10L, 402L);
+        assertThat(decision(id, 401, "approve", 2, "")).isEqualTo(403);
+        assertThat(decision(id, 403, "approve", 2, "")).isEqualTo(403);
+        mvc.perform(get("/api/timesheets/reviewer/" + id).header("X-User-Id", 403))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/timesheets/reviewer/inbox").header("X-User-Id", 402))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == '" + id + "')]").isNotEmpty());
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            List<Future<Integer>> results = new ArrayList<>();
+            for (String action : List.of("approve", "reject"))
+                results.add(pool.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return decision(id, 402, action, 2, "Concurrent review");
+                }));
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(
+                            results.get(0).get(20, TimeUnit.SECONDS),
+                            results.get(1).get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM timesheet_decision WHERE sheet_id=?", Long.class, UUID.fromString(id)))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND type='timesheet.decided'",
+                        Long.class,
+                        id))
+                .isEqualTo(1);
+        mvc.perform(get("/api/timesheets/summary?from=2026-10-19&to=2026-10-19&employeeId=401")
+                        .header("X-User-Id", 403))
+                .andExpect(status().isForbidden());
+        String state =
+                jdbc.queryForObject("SELECT status FROM timesheet WHERE id=?", String.class, UUID.fromString(id));
+        assertThat(service.summary(402, WEEK, WEEK, 401L, null)).hasSize(state.equals("APPROVED") ? 1 : 0);
+        if (state.equals("APPROVED"))
+            assertThat(service.summary(402, WEEK, WEEK, 401L, null).getFirst().approvedMinutes())
+                    .isEqualTo(90);
+    }
+
+    @Autowired
+    TimesheetService service;
+
+    @Test
+    void rejectedSheetReopensAndResubmitsWithImmutableHistory() throws Exception {
+        String id = submitted(411, 511);
+        scope(412, 10L, null);
+        scope(411, 10L, 412L);
+        assertThat(decision(id, 412, "reject", 2, "   ")).isEqualTo(400);
+        assertThat(decision(id, 412, "reject", 1, "Fix description")).isEqualTo(409);
+        assertThat(decision(id, 412, "reject", 2, " Fix description ")).isEqualTo(200);
+        assertThat(decision(id, 412, "reject", 2, "Fix description")).isEqualTo(409);
+        mvc.perform(post("/api/timesheets/" + id + "/reopen")
+                        .header("X-User-Id", 412)
+                        .contentType("application/json")
+                        .content("{\"version\":3}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/timesheets/" + id + "/reopen")
+                        .header("X-User-Id", 411)
+                        .contentType("application/json")
+                        .content("{\"version\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.decisions[0].reason").value("Fix description"));
+        mvc.perform(get("/api/timesheets/reviewer/" + id).header("X-User-Id", 412))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/api/timesheets/" + id + "?version=4").header("X-User-Id", 411))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/timesheets/" + id + "/submit")
+                        .header("X-User-Id", 411)
+                        .contentType("application/json")
+                        .content("{\"version\":1}"))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/timesheets/" + id + "/submit")
+                        .header("X-User-Id", 411)
+                        .contentType("application/json")
+                        .content("{\"version\":4}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(5));
+        assertThat(decision(id, 412, "approve", 2, "")).isEqualTo(409);
+        assertThat(decision(id, 412, "approve", 5, "")).isEqualTo(200);
+        mvc.perform(get("/api/timesheets/" + id).header("X-User-Id", 411))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.decisions.length()").value(2))
+                .andExpect(jsonPath("$.decisions[0].outcome").value("REJECTED"))
+                .andExpect(jsonPath("$.decisions[1].outcome").value("APPROVED"));
+        assertThat(service.summary(411, WEEK, WEEK, null, null).getFirst().approvedMinutes())
+                .isEqualTo(90);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND type='timesheet.submitted'",
+                        Long.class,
+                        id))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND type='timesheet.decided'",
+                        Long.class,
+                        id))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void departmentAndHrScopesAreCurrentActiveAndProjectionClocksAreIndependent() throws Exception {
+        String id = submitted(421, 521);
+        scope(421, 10L, 422L);
+        scope(422, 10L, null);
+        scope(423, 10L, null);
+        scope(424, 20L, null);
+        scope(425, 20L, null);
+        reviewScope.reviewer(423, new Models.Reviewer(AT, Models.ReviewerRole.DEPARTMENT_HEAD));
+        reviewScope.reviewer(424, new Models.Reviewer(AT, Models.ReviewerRole.DEPARTMENT_HEAD));
+        reviewScope.reviewer(425, new Models.Reviewer(AT, Models.ReviewerRole.HR_MANAGER));
+        mvc.perform(get("/api/timesheets/reviewer/" + id).header("X-User-Id", 423))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/timesheets/reviewer/" + id).header("X-User-Id", 424))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/timesheets/reviewer/" + id).header("X-User-Id", 425))
+                .andExpect(status().isOk());
+        handler.apply(event(
+                "employee.profile.updated",
+                "2026-10-01T00:00:20Z",
+                Map.of("userId", 421, "reportingManagerUserId", 425, "departmentId", 20)));
+        handler.apply(event(
+                "employee.profile.updated",
+                "2026-10-01T00:00:15Z",
+                Map.of("userId", 421, "reportingManagerUserId", 422)));
+        assertThat(reviewScope.eligible(421, 422)).isFalse();
+        assertThat(reviewScope.eligible(421, 423)).isTrue();
+        handler.apply(event(
+                "user.assignment.updated",
+                "2026-10-01T00:00:30Z",
+                Map.of("userId", 421, "departmentId", 20, "assignedAt", "2026-10-01T00:00:30Z")));
+        assertThat(reviewScope.eligible(421, 423)).isFalse();
+        assertThat(reviewScope.eligible(421, 424)).isTrue();
+        reviewScope.reconcile(424, new Models.EmployeeScope(false, 20L, null, AT.plusSeconds(40)));
+        assertThat(decision(id, 424, "approve", 2, "")).isEqualTo(403);
+        assertThat(decision(id, 425, "approve", 2, "")).isEqualTo(200);
+        assertThat(service.summary(425, WEEK, WEEK, null, 20L))
+                .anyMatch(v -> v.employeeId() == 421 && v.approvedMinutes() == 90);
+        mvc.perform(get("/api/timesheets/summary?from=2026-10-19&to=2026-10-19&departmentId=20")
+                        .header("X-User-Id", 423))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/timesheets/admin/reviewers/422")
+                        .header("X-User-Id", 422)
+                        .contentType("application/json")
+                        .content("{\"asOf\":\"2026-10-01T00:00:00Z\",\"role\":\"HR_MANAGER\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

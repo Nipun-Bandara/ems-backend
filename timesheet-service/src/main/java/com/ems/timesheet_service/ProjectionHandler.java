@@ -14,10 +14,12 @@ import tools.jackson.databind.JsonNode;
 public class ProjectionHandler {
     private final ProjectionStore store;
     private final OrganizationCalendar calendar;
+    private final ReviewScope scope;
 
-    public ProjectionHandler(ProjectionStore store, OrganizationCalendar calendar) {
+    public ProjectionHandler(ProjectionStore store, OrganizationCalendar calendar, ReviewScope scope) {
         this.store = store;
         this.calendar = calendar;
+        this.scope = scope;
     }
 
     @IdempotentConsumer("timesheet.projections")
@@ -30,6 +32,13 @@ public class ProjectionHandler {
         LocalDate effective = calendar.date(version);
         switch (event.type()) {
             case "user.verified" -> store.employee(id(p, "userId"), true, version);
+            case "user.assignment.updated" ->
+                scope.assignment(
+                        id(p, "userId"),
+                        nullableId(p, "departmentId"),
+                        Instant.parse(p.path("assignedAt").asText()));
+            case "employee.profile.updated" ->
+                scope.profile(id(p, "userId"), nullableId(p, "reportingManagerUserId"), version);
             case "project.created", "project.updated", "project.deleted" -> {
                 JsonNode project = Objects.requireNonNull(p.get("project"));
                 String name = project.path("name").asText("");
@@ -57,6 +66,12 @@ public class ProjectionHandler {
             }
             default -> throw new IllegalArgumentException("Unsupported event type");
         }
+    }
+
+    private Long nullableId(JsonNode p, String name) {
+        JsonNode n = p.get(name);
+        if (n == null) throw new IllegalArgumentException(name + " must be present (nullable)");
+        return n.isNull() ? null : id(p, name);
     }
 
     private long id(JsonNode node, String name) {
