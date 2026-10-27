@@ -20,6 +20,11 @@ spring:
               predicates:
                 - Path=/api/employees/**
 
+            - id: leave-service
+              uri: ${LEAVE_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/leaves/**
+
 app:
   security:
     jwt:
