@@ -108,6 +108,15 @@ jobs:
         if: steps.reactor.outputs.skip != 'true'
         run: mvn -B clean verify ${{ steps.reactor.outputs.args }}
 
+      - name: Upload test reports on failure
+        if: failure() && steps.reactor.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: No Java modules touched
         if: steps.reactor.outputs.skip == 'true'
         run: echo "No module sources changed — nothing to build."

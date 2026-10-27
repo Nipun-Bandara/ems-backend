@@ -42,7 +42,7 @@ jobs:
               'scope-enum': [
                 2,
                 'always',
-                ['gateway', 'identity', 'common', 'build', 'ci'],
+                ['gateway', 'identity', 'common', 'notification', 'org', 'employee', 'leave', 'timesheet', 'claim', 'recruitment', 'engagement', 'document', 'build', 'ci', 'deploy', 'docs'],
               ],
             },
           };
@@ -65,7 +65,7 @@ jobs:
           <type>(<scope>): <subject>
           ```
 
-          Allowed scopes: `gateway`, `identity`, `common`, `build`, `ci`
+          Allowed scopes: `gateway`, `identity`, `common`, `notification`, `org`, `employee`, `leave`, `timesheet`, `claim`, `recruitment`, `engagement`, `document`, `build`, `ci`, `deploy`, `docs`
 
           Examples:
 

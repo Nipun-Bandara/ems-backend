@@ -40,9 +40,12 @@ class EmployeeProfileIntegrationTest {
     @Container
     static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:4-management");
 
+    // The upstream registry image was withdrawn. This digest-pinned mirror has the
+    // same linux/amd64 image ID as the previously cached official release.
     @Container
     static final org.testcontainers.containers.GenericContainer<?> MINIO =
-            new org.testcontainers.containers.GenericContainer<>("minio/minio:latest")
+            new org.testcontainers.containers.GenericContainer<>(
+                            "dappros/minio:RELEASE.2025-09-07T16-13-09Z@sha256:624bad2fe79a8613aa3c5c9b765ebcab365080b8445cf1b05c357cc7753725f0")
                     .withEnv("MINIO_ROOT_USER", "ems_minio")
                     .withEnv("MINIO_ROOT_PASSWORD", "ems_local_dev")
                     .withCommand("server", "/data")
