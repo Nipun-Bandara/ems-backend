@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: timesheet-service
+  profiles:
+    active: development
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/timesheet_db}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+server:
+  port: 8086
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+ems:
+  storage:
+    enabled: false
+  timesheets:
+    timezone: ${ORGANIZATION_TIMEZONE:Asia/Colombo}

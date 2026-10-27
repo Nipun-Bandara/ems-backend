@@ -80,7 +80,9 @@ public class ProjectService {
     }
 
     public void delete(Long id) {
-        projects.delete(locked(id));
+        ProjectEntity project = locked(id);
+        outbox.publish("project", id.toString(), "project.deleted", new ProjectUpdatedPayload(response(project)));
+        projects.delete(project);
     }
 
     private ProjectEntity locked(Long id) {

@@ -1,0 +1,3 @@
+spring:
+  config:
+    import: optional:file:./timesheet-service/.env.staging[.properties],optional:file:.env.staging[.properties]

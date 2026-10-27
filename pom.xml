@@ -24,6 +24,7 @@
         <module>org-service</module>
         <module>employee-service</module>
         <module>leave-service</module>
+        <module>timesheet-service</module>
     </modules>
 
     <properties>
