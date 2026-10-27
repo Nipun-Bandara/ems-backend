@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 // TEST ONLY: synthetic identities, bound to loopback. Never use as an operational gateway.
 const portFile=fileURLToPath(new URL('../target/browser-fixture/port',import.meta.url));
 const controlFile=fileURLToPath(new URL('../target/browser-fixture/control.json',import.meta.url));
-const sessions={hr:{userId:6101,roles:['HR_MANAGER']},employee:{userId:6101,roles:['EMPLOYEE']},empty:{userId:6102,roles:['EMPLOYEE']},breakdown:{userId:6103,roles:['EMPLOYEE']}};
+const sessions={reviewer:{userId:6201,roles:['EMPLOYEE']},routing:{userId:6202,roles:['HR_MANAGER']},hr:{userId:6101,roles:['HR_MANAGER']},employee:{userId:6101,roles:['EMPLOYEE']},empty:{userId:6102,roles:['EMPLOYEE']},breakdown:{userId:6103,roles:['EMPLOYEE']}};
 const user=(kind)=>({...sessions[kind],email:`${kind}@example.test`,username:`Fixture ${kind}`,isBanned:false,emailVerified:true,departmentId:null,departmentName:null,token:`fixture-${kind}`,refreshToken:`fixture-refresh-${kind}`});
 http.createServer(async(req,res)=>{
  try {

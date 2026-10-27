@@ -1,9 +1,9 @@
-# Leave types, working calendar and balances
+# Leave types, working calendar, balances and requests
 
 `leave-service` owns leave_db, runs on port 8085 and receives `/api/leaves/**`
 through the existing gateway routes. This increment adds explicit yearly allocations,
 an append-only balance ledger, a working calendar and administration/self-balance UI.
-Leave requests, approval policy, accrual, carry-over and automatic yearly jobs are deferred.
+This opening section records item 28. Item 29 request APIs and transitions are documented below; approval execution remains deferred to item 30. Accrual, carry-over and automatic yearly jobs are deferred.
 
 ## Stable API v1
 
@@ -370,3 +370,229 @@ and CI wiring outside the allowlist; durable downstream bindings for new leave e
 The existing opt-in shared Compose MinIO storage smoke test is unrelated and requires
 STORAGE_INTEGRATION_TEST=true. No production deployment, real employee inventory,
 real identity account login, or live database migration is part of this verification.
+
+## Item 29: leave requests
+
+Item 29 adds submission, calendar estimates, own history, scoped review, rejection,
+cancellation and HR routing. No endpoint executes approvals. `APPROVED` is never
+produced by this increment. The earlier sections describe item 28 and its evidence;
+they are retained as historical context, not evidence for item 29.
+
+### Request API and policy
+
+The v1.1 additive contract remains in `leave-service/api/leave.openapi.json`.
+All paths are relative to `/api/leaves`; all require gateway authentication.
+
+| Method/path | Input / access |
+| --- | --- |
+| POST `/requests/estimate` | `{startDate,endDate,dayFraction}` → `{calculatedDays}`; calendar only, no balance guarantee |
+| POST `/requests` | `{typeId,startDate,endDate,dayFraction,reason,idempotencyKey}`; active employee submits for principal only, 201 |
+| GET `/requests/me` | Principal's full history, newest first |
+| GET `/requests/inbox` | Pending requests assigned to the current eligible reviewer; active HR_MANAGER also gets pending requests for routing; excludes own |
+| GET `/requests/{id}` | Owner, assigned currently eligible reviewer, or active HR_MANAGER; other identities get 403 |
+| POST `/requests/{id}/reject` | `{reason,idempotencyKey}`; assigned currently eligible reviewer only |
+| POST `/requests/{id}/cancel` | `{reason,idempotencyKey}`; owner only |
+| POST `/requests/{id}/route` | `{approverId,reason,idempotencyKey}`; active HR_MANAGER only, another employee's pending request, different eligible target |
+| PUT `/admin/reviewers/{userId}` | SYSTEM_ADMIN reconciles `{role,asOf}` after employee reconciliation; role DEPARTMENT_HEAD, HR_MANAGER or null to revoke |
+
+Request responses contain id, employeeId, typeId, entitlementId, approverId,
+startDate, endDate, dayFraction, calculatedDays (fixed decimal string), reason,
+status, version, createdAt and updatedAt. Dates are inclusive organization-local
+ISO dates. Audit timestamps are UTC instants; version starts at zero and increments
+on each state or approver change. Action actor, reason, key and time are retained
+in leave_request_action; submission reason is immutable. There is no browser day
+count field. Estimates and submissions both call item 28's WorkingCalendar.
+Submission always recalculates even if the preview was obtained earlier.
+
+FULL charges working dates, excluding configured holidays. HALF is exactly 0.50
+and requires the same single working start/end date. Zero-working-day, reversed,
+cross-year and out-of-supported-year (1900–9999) ranges return 400. Split a
+cross-year request into separate yearly requests. Date intervals cannot overlap
+any PENDING, APPROVAL_IN_PROGRESS or APPROVED request for the same employee,
+including across types. Half-day intervals occupy the entire date for overlap
+purposes; AM/PM selection and combining two half-day requests are not supported.
+
+### Transition table
+
+| From | Operation / actor | To | Reservation |
+| --- | --- | --- | --- |
+| absent | submit / active employee | PENDING | Reserve calculated days |
+| PENDING | reject / assigned eligible reviewer | REJECTED | Release exactly once |
+| PENDING | cancel / owner | CANCELLED | Release exactly once |
+| PENDING | route / active HR_MANAGER, never own request | PENDING | Keep; change approver, increment version |
+| CANCELLED | repeat cancel / owner | CANCELLED | No-op; no new state event |
+| any | identical recorded submission/action retry | current persisted state | No-op; no new reservation or event |
+| PENDING | approval execution, item 30 only | APPROVAL_IN_PROGRESS | Deferred |
+| APPROVAL_IN_PROGRESS | item 30 only | APPROVED or APPROVAL_FAILED | Deferred |
+| APPROVED | cancellation/reversal, item 30 only | Deferred | Deferred |
+| REJECTED / APPROVAL_FAILED / other unlisted source | new mutation in item 29 | 409 | Unchanged |
+
+The schema recognizes all six states for compatibility with item 30. No operation
+in item 29 enters APPROVAL_IN_PROGRESS, APPROVED or APPROVAL_FAILED. Rejection is
+also restricted to PENDING because approval execution must own in-progress races.
+No approval button is enabled, and there is no approval endpoint.
+
+### Routing and the local projection prerequisite
+
+Resolve the employee's reporting_manager_user_id from the local projection first;
+the manager must be active and different from the employee. A manager can review
+without an identity DEPARTMENT_HEAD role. When no active projected manager exists,
+choose an active same-department DEPARTMENT_HEAD from leave_reviewer (lowest user
+ID), then an active HR_MANAGER from that table (lowest user ID). A null department
+never matches a department head. With no candidate, return 409 before reservation.
+Current active status, manager relationship and fallback department/role eligibility
+are checked again for detail access and rejection. A former reviewer loses access;
+HR can route stranded pending requests. HR reading/routing requires the trusted
+HR_MANAGER principal role and an active employee projection; SYSTEM_ADMIN alone
+does not grant access to employees' request contents.
+
+Existing item 28 producer events do not carry reviewer roles. This change does not
+query another service's database or silently infer department-head roles. Operators
+must reconcile reviewer snapshots using the SYSTEM_ADMIN endpoint, obtaining roles
+from the existing identity API during the same controlled reconciliation procedure
+as employees. asOf must not be future, newer snapshots win, stale/equal timestamps
+are no-ops, and explicit null revokes the fallback role. Employee reconciliation
+continues unchanged. Later role changes require this reconciliation until upstream
+role lifecycle/replay events are added outside this allowlist. Snapshot rows retain
+only role and timestamp. Managers need only the existing employee projection.
+
+### Atomicity, retries and outbox
+
+V4 adds leave_reviewer, leave_request and leave_request_action within leave_db.
+Submission takes the employee transaction advisory lock used by projection updates,
+checks prior submission key and overlaps across all types, then calls item 28 reserve
+under the entitlement row lock. Request, reservation and outbox insert commit or
+roll back together. An insufficient balance, overlap or missing approver leaves
+no request, reservation or request event behind. All submission writers must keep
+this employee-lock protocol; it is not a database exclusion constraint protecting
+arbitrary SQL writes. Calendar edits affect later estimates/submissions, never the
+persisted calculated days of an existing reservation.
+
+Reject/cancel/route lock the request row. Release uses item 28 settle(RELEASED)
+under its entitlement lock in that same transaction. Racing rejection/cancellation
+has one winner; the loser receives 409. Repeated owner cancellation is a no-op even
+with a new key. Submission keys are scoped per employee, action keys per request,
+max 100 characters. Identical actor/action/reason/target retries return current
+persisted state; conflicting reuse returns 409. Keys must be preserved across
+uncertain responses. The UI preserves keys for unchanged input during the mounted
+form's retry context; reloading ends that context. Submit retries return the same
+request even after it reached a terminal state.
+
+Each actual submission, rejection, cancellation or reroute publishes
+`leave.request.changed` through the existing transactional OutboxPublisher:
+`{request:<full response>,actorId,action,reason}` with action SUBMITTED, REJECTED,
+CANCELLED or ROUTED. The existing EventEnvelope and at-least-once delivery apply;
+consumers deduplicate eventId and can order by request.version. Bind a durable
+consumer to this routing key before operational use. Retries do not emit another
+event. Private reviewer reconciliation does not publish a domain event.
+
+### Dependencies and rollout / PR compatibility
+
+No dependencies or versions were added. Java 21/Boot 4/JDBC transactions,
+PostgreSQL/Flyway, ems-common gateway security/errors/outbox and disabled storage
+are reused. V4 is additive; V1–V3 are unchanged. Apply backend migration before the
+frontend. Item 28 endpoints, employee snapshots and existing event shapes remain
+compatible. The frontend contract types are regenerated with the installed
+openapi-typescript generator. Requests use the existing cookie-based Axios/BFF,
+React Hook Form/Zod, TanStack Query, Button and theme. Cache keys include user ID;
+all request ownership, reviewer eligibility and routing checks run on the backend,
+including direct BFF requests. Existing leave navigation reaches the expanded page.
+Installed Next.js forms, authentication and BFF guidance was read before coding.
+
+Production prerequisites remain approved holidays, real yearly allocations,
+manager/status reconciliation, reviewer-role reconciliation for fallback routing,
+gateway wiring and durable consumer bindings. Real identity login, real employee
+inventory, production migration and deployment are outside this verification.
+
+### Item 29 verification procedure
+
+Run `mvn -B -pl api-gateway,leave-service -am verify` from ems-backend, then
+`npm run lint`, `./node_modules/.bin/tsc --noEmit` and `npm run build` from
+ems-frontend. In environments whose trusted TLS roots differ from Turbopack's
+bundled roots, `NEXT_TURBOPACK_EXPERIMENTAL_USE_SYSTEM_TLS_CERTS=1 npm run build`
+uses system trust for the existing Google Fonts downloads; it does not disable
+certificate verification. No repository configuration change is needed.
+
+Use the opt-in disposable browser fixture documented above. Item 29 additionally
+seeds employee 6101 with 10.00 Fixture balance breakdown days in 2026, manager 6201,
+and a synthetic holiday on 2026-11-02. Sign in as reviewer@example.test (user 6201,
+EMPLOYEE principal role, projected manager) or routing@example.test (6202,
+HR_MANAGER), in addition to the existing synthetic accounts.
+
+1. As employee@example.test, request FULL leave from 2026-10-30 to 2026-11-03.
+   Preview and persisted request must show 2.00, excluding Saturday/Sunday and the
+   configured Monday holiday. Availability moves 10.00 → 8.00, reserved to 2.00.
+2. Submit overlapping dates with a new key; expect 409 and unchanged availability.
+   Cancel the original pending request with a reason, reload, and confirm CANCELLED,
+   0.00 reserved and 10.00 available. Repeat cancellation via API with the same and
+   another key; availability and state-event count must not change.
+3. Request HALF on 2026-11-04 only; preview 0.50, pending reservation 0.50.
+   A half-day range over multiple dates and a weekend-only request must be refused.
+4. As reviewer@example.test, see only assigned pending requests, supply a reason,
+   and reject. Approval remains disabled. Employee history must show REJECTED and
+   restored availability. Unrelated identities' detail/reject/cancel calls fail 403.
+5. As routing@example.test, route another employee's pending request to a different
+   eligible reviewer, with a reason. Verify version increment and new reviewer ID;
+   prior reviewer loses access, and HR cannot route its own request or assign the owner.
+6. The integration suite submits concurrent overlapping requests with distinct keys
+   and concurrent identical-key retries. Verify one request/reservation per winner,
+   no orphan on insufficient funds, unchanged keys reject altered input, scoped
+   inbox/detail access, fallback selection, rerouting, terminal retries, and 409 for
+   item 30-only cancellation states. Every true state change has one outbox record.
+
+### Item 29 verification evidence — 27 October 2026
+
+- Both clean starting checkouts were already on feat/leave-requests at the current
+  local development tips (backend 7f40e04, frontend 6fdc543). Item 28's actual
+  calendar, reserve/settle, projection, security, outbox and UI implementations were
+  inspected. No branch reset or unrelated source change was performed.
+- Before feature changes, the focused baseline command
+  `mvn -B -pl api-gateway,leave-service -am verify` completed BUILD SUCCESS.
+  Its temporary log was lost when the execution session was interrupted; that
+  result was inspected during the original run, not inferred from item 28 reports.
+- Final focused command completed BUILD SUCCESS: 34 reported tests, 32 executed,
+  zero failures/errors, two intentional skips (shared storage opt-in and browser
+  fixture opt-in). All 14 leave integration tests and three MVC tests passed.
+  Fresh V1–V4 migrations, holiday/weekend calculation, half-day validation,
+  concurrent overlap and retry deduplication, insufficient-funds rollback,
+  reservation/release counts, rejection/cancellation retry safety, ownership,
+  fallback/routing and deferred approval-state guards passed. Existing real-JWT
+  gateway probes passed in development, staging and production profiles.
+- An initial feature suite run passed the new scenarios but timed out in the
+  existing gateway startup probe while other builds/fixtures were running.
+  Later focused runs passed without relaxing that test. The initial failure is
+  not counted as passing evidence. A full all-module reactor build was not rerun
+  for item 29; earlier all-module evidence above belongs to item 28.
+- Final frontend lint completed with zero errors and six pre-existing warnings
+  outside the changed files. Standalone TypeScript checking passed. Production
+  build passed with
+  `NEXT_TURBOPACK_EXPERIMENTAL_USE_SYSTEM_TLS_CERTS=1 npm run build`.
+  A default build retry in the resumed environment failed on existing Google Fonts
+  HTTPS downloads; using system certificate trust fixed the network prerequisite.
+  The unchanged next.config.ts skips build-time type validation, so the separate
+  successful TypeScript command is the typecheck evidence.
+- Browser checks used the real Next app, cookie BFF and leave service against
+  disposable PostgreSQL/RabbitMQ, with synthetic identity/login and gateway only.
+  A FULL 30 October–3 November request previewed/persisted 2.00 excluding weekend
+  and configured Monday holiday; available moved 10.00 → 8.00. A second overlapping
+  submission showed the server conflict and left balance unchanged. Owner
+  cancellation restored 10.00 and persisted CANCELLED after reload. A single-date
+  HALF request previewed/persisted 0.50, and the assigned manager inbox exposed
+  rejection with approval disabled. In the resumed disposable fixture, HR routed
+  another half-day request from 6201 to eligible reviewer 6202 (version 1), then
+  rejected as its assigned reviewer; it disappeared from the pending inbox.
+  Employee history refreshed to REJECTED, version 2, with 0.00 reserved / 10.00
+  available. No production identity login or real employee request was exercised.
+
+Final logs: `leave-service/target/verification/item29/` (focused.log,
+frontend-lint.log, frontend-typecheck.log, frontend-build-retry.log,
+browser-backend.log, browser-frontend.log). Screenshots in
+`leave-service/target/browser-fixture/`: request-reviewer.png,
+request-restored-balance.png and request-rejected-history.png. All are ignored
+build outputs, not committed artifacts. The interruption stopped the original
+fixture; final browser checks used a newly created disposable database.
+
+External prerequisites not exercised: real identity account login and authoritative
+employee/status/manager/role inventory; approved production holidays and allocations;
+production gateway/CI wiring, durable downstream request consumers and production
+migration/deployment. No secret was committed and no live database was modified.
