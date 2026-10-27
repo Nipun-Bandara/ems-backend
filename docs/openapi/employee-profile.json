@@ -1,0 +1,329 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Employee profile API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/employees/me": {
+      "get": {
+        "operationId": "getMyEmployeeProfile",
+        "responses": {
+          "200": {
+            "description": "Employee profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid profile"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putMyEmployeeProfile",
+        "responses": {
+          "200": {
+            "description": "Employee profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid profile"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEmployeeProfileRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/employees/{userId}": {
+      "parameters": [
+        {
+          "name": "userId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getEmployeeProfile",
+        "responses": {
+          "200": {
+            "description": "Employee profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid profile"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putEmployeeProfile",
+        "responses": {
+          "200": {
+            "description": "Employee profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid profile"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEmployeeProfileRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UpdateEmployeeProfileRequest": {
+        "type": "object",
+        "required": [
+          "firstName",
+          "lastName"
+        ],
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9][0-9 ()-]{5,29}$",
+            "nullable": true,
+            "maxLength": 30
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "emergencyContactName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100
+          },
+          "emergencyContactPhone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9][0-9 ()-]{5,29}$",
+            "nullable": true,
+            "maxLength": 30
+          },
+          "designationId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true
+          },
+          "joinDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "reportingManagerUserId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true
+          }
+        }
+      },
+      "EmployeeProfile": {
+        "type": "object",
+        "required": [
+          "firstName",
+          "lastName",
+          "phone",
+          "dateOfBirth",
+          "address",
+          "emergencyContactName",
+          "emergencyContactPhone",
+          "designationId",
+          "joinDate",
+          "reportingManagerUserId",
+          "userId",
+          "username",
+          "email",
+          "status",
+          "avatarUrl",
+          "departmentId",
+          "avatarObjectKey"
+        ],
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9][0-9 ()-]{5,29}$",
+            "nullable": true,
+            "maxLength": 30
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "emergencyContactName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100
+          },
+          "emergencyContactPhone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9][0-9 ()-]{5,29}$",
+            "nullable": true,
+            "maxLength": 30
+          },
+          "designationId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true
+          },
+          "joinDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "reportingManagerUserId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true
+          },
+          "userId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "status": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "departmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "avatarObjectKey": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true,
+            "maxLength": 255
+          }
+        }
+      }
+    }
+  }
+}

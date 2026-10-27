@@ -35,13 +35,16 @@ class DepartmentProjectionHandlerTest {
     @Mock
     private UserRepository users;
 
+    @Mock
+    private com.ems.common.outbox.OutboxPublisher outbox;
+
     private JsonMapper jsonMapper;
     private DepartmentProjectionHandler handler;
 
     @BeforeEach
     void setUp() {
         jsonMapper = JsonMapper.builder().build();
-        handler = new DepartmentProjectionHandler(departments, users, jsonMapper);
+        handler = new DepartmentProjectionHandler(departments, users, jsonMapper, outbox);
     }
 
     @Test
@@ -58,10 +61,12 @@ class DepartmentProjectionHandlerTest {
     void renamingUpdatesTheProjectionAndEveryAssignedUser() {
         DepartmentReplicaEntity replica = new DepartmentReplicaEntity(12L, "Engineering");
         UserEntity first = UserEntity.builder()
+                .userId(42L)
                 .departmentId(12L)
                 .departmentName("Engineering")
                 .build();
         UserEntity second = UserEntity.builder()
+                .userId(42L)
                 .departmentId(12L)
                 .departmentName("Engineering")
                 .build();
@@ -79,6 +84,7 @@ class DepartmentProjectionHandlerTest {
     @Test
     void deletingNullsDepartmentDataWithoutCallingOrgService() {
         UserEntity user = UserEntity.builder()
+                .userId(42L)
                 .departmentId(12L)
                 .departmentName("Engineering")
                 .isAssigned(true)

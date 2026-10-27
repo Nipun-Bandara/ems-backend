@@ -21,6 +21,7 @@ class MessagingConfigTest {
                 .containsExactly(
                         tuple("ems.events", "user.verified"),
                         tuple("ems.events", "user.registered"),
+                        tuple("ems.events", "user.assignment.updated"),
                         tuple("ems.events", "employee.retry"));
     }
 }

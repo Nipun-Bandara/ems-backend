@@ -1,10 +1,12 @@
 package com.ems.employee_service.entity;
 
+import com.ems.employee_service.dto.UpdateEmployeeProfileRequest;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -13,6 +15,31 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 public class EmployeeProfile {
+
+    private String firstName;
+    private String lastName;
+    private String phone;
+    private LocalDate dateOfBirth;
+    private String address;
+    private String emergencyContactName;
+    private String emergencyContactPhone;
+    private Long designationId;
+    private LocalDate joinDate;
+    private Long reportingManagerUserId;
+    private Long departmentId;
+
+    public void update(UpdateEmployeeProfileRequest r) {
+        firstName = r.firstName();
+        lastName = r.lastName();
+        phone = r.phone();
+        dateOfBirth = r.dateOfBirth();
+        address = r.address();
+        emergencyContactName = r.emergencyContactName();
+        emergencyContactPhone = r.emergencyContactPhone();
+        designationId = r.designationId();
+        joinDate = r.joinDate();
+        reportingManagerUserId = r.reportingManagerUserId();
+    }
 
     private String avatarObjectKey;
     private String pendingAvatarKey;

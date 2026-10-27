@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class UserServiceImpl implements UserService {
 
+    private final com.ems.common.outbox.OutboxPublisher outbox;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserRolesRepository userRolesRepository;
@@ -115,6 +116,12 @@ public class UserServiceImpl implements UserService {
         }
 
         UserEntity updatedUser = userRepository.save(user);
+        outbox.publish(
+                "user",
+                userId.toString(),
+                com.ems.identity_service.event.UserAssignmentUpdatedPayload.TYPE,
+                new com.ems.identity_service.event.UserAssignmentUpdatedPayload(
+                        userId, updatedUser.getDepartmentId(), java.time.Instant.now()));
         return convertToUserRecord(updatedUser);
     }
 

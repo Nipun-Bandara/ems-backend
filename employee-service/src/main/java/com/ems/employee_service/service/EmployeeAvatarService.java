@@ -23,15 +23,35 @@ public class EmployeeAvatarService {
     private static final Duration DOWNLOAD_TTL = Duration.ofMinutes(5);
     private final EmployeeProfileRepository profiles;
     private final StorageService storage;
+    private final com.ems.common.outbox.OutboxPublisher outbox;
 
-    public EmployeeAvatarService(EmployeeProfileRepository profiles, StorageService storage) {
+    public EmployeeAvatarService(
+            EmployeeProfileRepository profiles, StorageService storage, com.ems.common.outbox.OutboxPublisher outbox) {
+        this.outbox = outbox;
         this.profiles = profiles;
         this.storage = storage;
     }
 
     public record Upload(String uploadUrl, String objectKey, Map<String, String> headers) {}
 
-    public record Profile(Long userId, String username, String email, String status, String avatarUrl) {}
+    public record Profile(
+            Long userId,
+            String username,
+            String email,
+            String status,
+            String avatarUrl,
+            String firstName,
+            String lastName,
+            String phone,
+            java.time.LocalDate dateOfBirth,
+            String address,
+            String emergencyContactName,
+            String emergencyContactPhone,
+            Long designationId,
+            java.time.LocalDate joinDate,
+            Long reportingManagerUserId,
+            Long departmentId,
+            String avatarObjectKey) {}
 
     @Transactional
     public Upload requestUpload(Long id, String contentType, long size) {
@@ -69,6 +89,8 @@ public class EmployeeAvatarService {
             throw e;
         }
         profile.confirmAvatar();
+        outbox.publish(
+                "employee", id.toString(), "employee.profile.updated", EmployeeProfileService.profileSnapshot(profile));
         return response(profile);
     }
 
@@ -91,6 +113,18 @@ public class EmployeeAvatarService {
                 p.getStatus(),
                 p.getAvatarObjectKey() == null
                         ? null
-                        : storage.presignedDownload(BUCKET, p.getAvatarObjectKey(), DOWNLOAD_TTL));
+                        : storage.presignedDownload(BUCKET, p.getAvatarObjectKey(), DOWNLOAD_TTL),
+                p.getFirstName(),
+                p.getLastName(),
+                p.getPhone(),
+                p.getDateOfBirth(),
+                p.getAddress(),
+                p.getEmergencyContactName(),
+                p.getEmergencyContactPhone(),
+                p.getDesignationId(),
+                p.getJoinDate(),
+                p.getReportingManagerUserId(),
+                p.getDepartmentId(),
+                p.getAvatarObjectKey());
     }
 }

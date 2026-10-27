@@ -21,9 +21,14 @@ public class DepartmentProjectionHandler {
     private final DepartmentReplicaRepository departments;
     private final UserRepository users;
     private final JsonMapper jsonMapper;
+    private final com.ems.common.outbox.OutboxPublisher outbox;
 
     public DepartmentProjectionHandler(
-            DepartmentReplicaRepository departments, UserRepository users, JsonMapper jsonMapper) {
+            DepartmentReplicaRepository departments,
+            UserRepository users,
+            JsonMapper jsonMapper,
+            com.ems.common.outbox.OutboxPublisher outbox) {
+        this.outbox = outbox;
         this.departments = departments;
         this.users = users;
         this.jsonMapper = jsonMapper;
@@ -60,6 +65,12 @@ public class DepartmentProjectionHandler {
             user.setDepartmentId(null);
             user.setDepartmentName(null);
             user.setIsAssigned(false);
+            outbox.publish(
+                    "user",
+                    user.getUserId().toString(),
+                    com.ems.identity_service.event.UserAssignmentUpdatedPayload.TYPE,
+                    new com.ems.identity_service.event.UserAssignmentUpdatedPayload(
+                            user.getUserId(), null, java.time.Instant.now()));
         });
         users.saveAll(affectedUsers);
         departments.deleteById(payload.departmentId());
