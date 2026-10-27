@@ -62,6 +62,27 @@ public class EmployeeProfile {
         pendingAvatarExpiresAt = null;
     }
 
+    private String cvObjectKey;
+    private String pendingCvKey;
+    private String pendingCvType;
+    private Long pendingCvSize;
+    private Instant pendingCvExpiresAt;
+
+    public void requestCv(String key, String type, long size, Instant expiresAt) {
+        pendingCvKey = key;
+        pendingCvType = type;
+        pendingCvSize = size;
+        pendingCvExpiresAt = expiresAt;
+    }
+
+    public void confirmCv() {
+        cvObjectKey = pendingCvKey;
+        pendingCvKey = null;
+        pendingCvType = null;
+        pendingCvSize = null;
+        pendingCvExpiresAt = null;
+    }
+
     @Id
     @Column(name = "user_id", nullable = false)
     private Long userId;
