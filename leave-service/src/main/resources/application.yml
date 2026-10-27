@@ -16,3 +16,6 @@ logging:
 ems:
   storage:
     enabled: false
+  leave:
+    timezone: ${ORGANIZATION_TIMEZONE:Asia/Colombo}
+    workweek: ${ORGANIZATION_WORKWEEK:MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY}
