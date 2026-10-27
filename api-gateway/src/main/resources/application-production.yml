@@ -25,6 +25,11 @@ spring:
               predicates:
                 - Path=/api/leaves/**
 
+            - id: timesheet-service
+              uri: ${TIMESHEET_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/api/timesheets/**
+
 app:
   security:
     jwt:
