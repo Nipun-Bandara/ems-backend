@@ -23,6 +23,7 @@
         <module>notification-service</module>
         <module>org-service</module>
         <module>employee-service</module>
+        <module>leave-service</module>
     </modules>
 
     <properties>

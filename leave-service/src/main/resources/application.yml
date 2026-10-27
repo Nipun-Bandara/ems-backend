@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: leave-service
+  profiles:
+    active: development
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+server:
+  port: 8085
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+ems:
+  storage:
+    enabled: false
