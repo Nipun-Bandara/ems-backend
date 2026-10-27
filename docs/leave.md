@@ -596,3 +596,272 @@ External prerequisites not exercised: real identity account login and authoritat
 employee/status/manager/role inventory; approved production holidays and allocations;
 production gateway/CI wiring, durable downstream request consumers and production
 migration/deployment. No secret was committed and no live database was modified.
+
+## Item 30: durable approval and approved cancellation
+
+This section supersedes item 29's deferred approval statements. Both feature branches
+start at their current local `development` tips: backend `eb89e10`, frontend `b1aa3c7`.
+Item 29's actual request, reviewer projection, reservation, ledger, gateway security
+and outbox implementations were inspected before extending them.
+
+### API contract and permissions
+
+The generated frontend contract is v1.2 in `leave-service/api/leave.openapi.json`.
+All paths below are relative to `/api/leaves` and require gateway authentication.
+
+| Method/path | Input and result |
+| --- | --- |
+| POST `/requests/{id}/approve` | `{version,idempotencyKey,reason}` → 202 Workflow, after commit |
+| POST `/requests/{id}/cancel` | Pending cancellation retains the item 29 response. After approval starts, also require `version` and return Workflow (200). |
+| GET `/requests/{id}/workflows` | Ordered Workflow array, under the request's existing detail authorization |
+| GET `/workflows/{id}` | Workflow under the owning request's authorization |
+| GET `/calendar?employeeId=…` | Employee scope; defaults to principal. Returns `{timezone,workweek,absences}`. |
+| GET `/calendar?departmentId=…` | Department scope; mutually exclusive with employeeId |
+
+A Workflow contains `id,requestId,operation,state,stepId,attempts,deadline,nextAttempt,error`.
+Operation is APPROVE or CANCEL. Workflow and request states are distinct: cancellation
+can be removing an absence while the request still reads APPROVED. Read workflow
+progress until its terminal state. Request version increments when approval/cancellation
+starts and at durable finalization. Start uses the client's expected version under the
+same request-row lock as reject, route and pending cancel. A stale version returns 409.
+Identical retries with the original actor, operation, reason, key and version return the
+original workflow's current state, even after completion. Changed input returns 409.
+A unique request/operation constraint prevents another approval or cancellation workflow,
+even if a caller loses its key. Keys also share the existing request-action namespace.
+
+Only the assigned, currently eligible reviewer may approve; ownership never permits
+self-approval, including an HR principal. Approved/in-progress cancellation is owner-only.
+The item 29 active-manager/department-head/HR projection rules still apply. Inbox now
+also retains assigned in-progress, approved and approval-failed requests to expose their
+workflow results. Its employee/reviewer/HR scope is unchanged. Authorization runs in
+leave-service for requests forwarded through the cookie-based BFF, independently of UI
+visibility. No client token store or direct service/database access was introduced.
+
+Calendar reads require an active employee projection. Own calendar is available by
+default; another employee requires an eligible reviewer relationship or active HR.
+Department scope requires active HR or a reconciled head of that same department.
+No department scope means no department-wide read. Absences contain only request ID,
+employee ID, inclusive local dates and FULL/HALF; no leave type, reason, contact details
+or other request contents. Existing timezone/workweek fields remain in the response.
+Approved rows alone are public; partially created calendar rows are never exposed.
+
+### Persisted orchestrator and compensation
+
+The absence calendar is the `leave_absence` table inside leave-service's own database.
+There is no calendar service and no cross-service database access. The explicit workflow
+is the future integration boundary: keep its durable step ID as the idempotency/fencing
+identifier when replacing a local calendar action with an external participant.
+
+Approval states:
+
+`DEBIT → CALENDAR → FINALIZE → APPROVED`
+
+DEBIT calls the existing reservation settlement under the entitlement lock. The debit,
+reservation transition, workflow advance, immutable audit and next outbox command commit
+in one transaction. CALENDAR inserts at most one row per request. FINALIZE durably sets
+request APPROVED and publishes `leave.approved` in that same transaction. There is no
+email call in approval. New workflow commands carry `{workflowId,stepId}` in the existing
+EventEnvelope on `leave.workflow.step`. The leave queue is bound to this routing key.
+
+Every advance first locks the request, reloads the workflow and checks its current step
+ID and terminal state. Duplicate or out-of-order commands therefore cannot repeat a
+completed effect. There is no separate, unauthenticated success callback that could
+advance a compensated workflow; local effect completion is committed with the step
+transition. Old calendar/debit commands are ignored after compensation or cancellation.
+
+Each step has a durable ID, deadline, attempt count and next-attempt timestamp. The
+recovery poller scans persisted due rows every second, independently of broker delivery.
+It resumes after restart without in-memory workflow state. Technical failures roll back
+the step, then record a retry in a separate transaction with a two-second delay. Three
+failed attempts or a 30-second required-step deadline switch approval to COMPENSATE.
+Permanent calendar failure switches there immediately. Immutable workflow audit rows
+retain step transitions, attempt/deadline snapshots, actor, reason and safe error text;
+request actions and balance entries are also protected against UPDATE/DELETE.
+
+COMPENSATE removes any partial absence, appends at most one positive TAKEN reversal
+under `reservation:restore:<requestId>` if a debit exists, releases the reservation and
+sets APPROVAL_FAILED. Those effects and one `leave.balance.restored` event commit
+atomically. Taken is still net consumption, so existing balance fields and arithmetic
+are unchanged. The original debit remains immutable. Reservation state plus the unique
+internal ledger key prevent a second refund. Compensation retries without a terminal
+retry limit: database outages must not strand a debit in an abandoned compensation.
+
+Approved/in-progress cancellation fences the original approval before entering:
+
+`REMOVE_CALENDAR → RESTORE → CANCELLED`
+
+It uses the same persisted step engine, locks, restore primitive, immutable audits and
+restart recovery. Cancellation before debit releases only the reservation. Cancellation
+after debit creates one reversal. Race winners are serialized by the request lock; a
+loser with a stale expected version must refresh, while identical recorded retries
+remain valid. The final restoration event includes `workflowId,requestId,employeeId,outcome`.
+
+### Independent email delivery and prerequisites
+
+Notification-service's leave handler has its own durable `notification.leave.q`, retry
+and parked queues through QueueFactory, bound to `leave.approved` and `user.verified`.
+It deduplicates event IDs with ems-common and stores one logical delivery per workflow ID.
+The approval event contains `workflowId,requestId,employeeId,startDate,endDate` only.
+A minimal email recipient projection is owned by notification-service and consumes the
+existing token-free verified-user contract, ordered by verifiedAt. It never reads leave
+or identity databases. A contact arriving after approval unblocks the pending delivery.
+
+SMTP runs from persisted delivery rows, one transaction/locked row per email, with
+SKIP LOCKED across instances. Failed email or missing recipient retries indefinitely
+with exponential backoff (2 seconds through 300 seconds). It cannot write leave state.
+A successful send records sent_at; replayed events or a second envelope with the same
+workflow ID do not produce another logical delivery. The stored template key is
+`leave.approved`. A stable `<leave-WORKFLOW_ID@ems.local>` Message-ID survives send retries.
+SMTP acceptance and database commit cannot be atomic: a crash after relay acceptance
+can physically resend that same logical message. Relay/inbox deduplication is needed
+if exactly one physical email is required; no exactly-once SMTP guarantee is claimed.
+
+Before rollout, replay authoritative, verified `user.verified` snapshots into the new
+notification queue for existing employees (same verifiedAt and confirmed email, a stable
+event ID for retries). The queue cannot retroactively receive old verification events.
+Missing recipients stay pending, rather than losing approved leave or inventing an
+address. Identity currently has no bulk event replay API; use the existing controlled
+snapshot/reconciliation process and obtain recipient data through authorized APIs.
+Email changes require a suitable newer authoritative contact snapshot until an upstream
+email lifecycle contract exists. No new producer or shared database lookup was added.
+
+Existing prerequisites remain manager/status/reviewer reconciliation, actual approved
+holidays/allocations, trusted gateway headers, broker/SMTP connectivity and operations
+monitoring. The shared producer outbox keeps its existing retry/parking policy; operators
+must replay exhausted producer/parked events after prolonged broker or malformed-event
+incidents. Notification SMTP outages, once delivery is persisted, need no event replay.
+
+### Frontend behavior and fault injection
+
+Approve and cancel require a native modal confirmation showing dates, days and reason.
+The UI saves the exact key/version/reason/operation in per-user/request sessionStorage
+before POST, including across reload. Uncertain responses retain a single saved-decision
+retry and disable a fresh decision. A definitive 400/403/409 is reconciled through the
+scoped workflow read before clearing that context. Workflow queries poll while active,
+stop at terminal states and invalidate balances, requests and calendar on completion.
+The owner sees approved absences and explicit compensated-failure text. Existing Query,
+form, Button/theme, cookie client/BFF and server authorization patterns are reused.
+Installed Next.js use-client, forms, authentication and BFF guidance was consulted.
+
+WorkflowFaults is programmatic only, with no HTTP injection endpoint. It supports
+per-request permanent calendar failure and one-shot pre-commit crash checkpoints for
+any step. It is enabled only with test/development profiles, and disabled if production
+or staging is also active. Production/default-only profiles reject attempts to arm it.
+The opt-in browser fixture can seed a failing request with
+`LEAVE_BROWSER_FIXTURE=true LEAVE_BROWSER_SAGA_FAILURE=true`; its loopback synthetic
+gateway also supports ignored target/browser-fixture/control.json containing
+`{"loseDecisionResponse":true}` to simulate a lost approve/cancel response after commit.
+Clear to `{}` before retrying. These controls are exclusively in test fixture sources.
+
+### Dependencies, compatibility and PR notes
+
+No new library, package or version was added. This reuses installed Java 21/Boot 4,
+JDBC/JPA transactions, PostgreSQL/Flyway, Jackson 3, AMQP, JavaMail and ems-common
+security/errors/outbox; storage remains disabled. Leave V5 and notification V6 are
+additive migrations; V1–V4/V1–V5 respectively are unchanged. Leave V5 expands the ledger
+check to allow internally keyed positive TAKEN reversal entries and adds immutable
+action/workflow audit protection. Consumers interpreting individual TAKEN entries must
+respect their sign; aggregate taken remains the same decimal net-usage field.
+
+Deploy both backend migrations/handlers before the frontend. Old pending cancel bodies
+and responses still work; approved/in-progress cancellation is a new versioned operation
+with a Workflow response. Calendar keeps policy fields and adds scoped absence rows,
+with active-projection eligibility now required. The new UI's types are generated from
+the committed v1.2 backend contract using the already installed openapi-typescript.
+The two repositories retain feat/leave-approval-saga; no unrelated source/config, shared
+security/storage code, production service or live data was changed.
+
+### Item 30 verification
+
+From ems-backend:
+
+```bash
+mvn -B -pl api-gateway,leave-service,notification-service -am verify
+python3 leave-service/verification/notification_recovery.py
+```
+
+The Python probe uses only the installed Docker CLI, Java and Python standard library.
+It creates uniquely named disposable PostgreSQL databases in separate containers plus
+RabbitMQ, starts packaged services, initially leaves SMTP stopped, then restarts
+notification-service and starts a loopback SMTP sink. It asserts durable approval,
+calendar/debit, pending delivery, recovery, duplicate event/workflow deduplication and
+approved cancellation. It removes only its own containers/processes. Its test-only mail
+health exclusion allows the deliberate SMTP outage during application readiness.
+
+From ems-frontend:
+
+```bash
+npm run lint
+./node_modules/.bin/tsc --noEmit
+NEXT_TURBOPACK_EXPERIMENTAL_USE_SYSTEM_TLS_CERTS=1 npm run build
+./node_modules/.bin/openapi-typescript ../ems-backend/leave-service/api/leave.openapi.json -o app/types/leave-api.d.ts
+```
+
+Use the existing opt-in browser fixture with the real production Next build and cookie
+BFF. Verify confirmation/back-out, assigned-reviewer approval progress, one owner
+absence and net debit, owner cancellation with restored balance and removed absence,
+post-commit response loss plus reload/saved-key retry, and the seeded permanent calendar
+failure with final failure text and restored owner balance. Fixtures use synthetic login
+and gateway forwarding, not real identity accounts or operational employee data.
+
+### Item 30 evidence — 27 October 2026
+
+- Clean baseline used an isolated `git archive HEAD` of backend `eb89e10`, without
+  feature edits. `mvn -B -pl api-gateway,leave-service,notification-service -am verify`
+  passed: 47 reported tests, 45 executed, zero failures/errors, two intentional skips.
+  Log: `target/verification/item30/clean-baseline.log` under leave-service. The first
+  restricted attempt could not access Docker. A separate overlapping early feature
+  run exposed an incorrect V5 constraint name; it is not counted as baseline evidence.
+- Final focused reactor command passed with formatting checks: 54 reported tests,
+  52 executed, zero failures/errors, two intentional skips (shared storage smoke and
+  opt-in browser fixture). The 19 leave integration tests include original item 29
+  behavior, reviewer/self/outsider denial, stale version refusal, identical retries,
+  one debit/calendar/approval event, permanent calendar failure after debit, removal
+  of a partial calendar row, one reversal/restoration event, stale/duplicate step
+  delivery, pre-commit crash rollback, deadline compensation, concurrent approval
+  progress/cancellation with replay, and application-context shutdown/restart across
+  approval and cancellation. Existing real-JWT gateway checks passed in development,
+  staging and production profiles. This is not a new full all-module reactor result.
+  Log: `target/verification/item30/final-focused.log`.
+- Notification's two new regression tests passed, covering serializable message
+  construction/stable logical ID and failed-SMTP retry without marking sent. The
+  first real SMTP probe found an empty-message-copy MessagingException; corrected
+  construction and the regression tests precede the successful final probe. An
+  earlier test-only readiness check also wrongly treated deliberate SMTP downtime
+  as failed app startup; only the probe now excludes mail health during that outage.
+- `python3 leave-service/verification/notification_recovery.py` passed with the final
+  packaged services, real isolated PostgreSQL/RabbitMQ, and a loopback SMTP sink.
+  It observed APPROVED with 1.00 taken and one absence while SMTP was stopped, a
+  persisted failed MailSendException attempt, a notification-service process restart,
+  then sent_at and exactly one logical leave message after SMTP returned. Replaying
+  the approved workflow under a new event ID and duplicating that envelope left one
+  delivery row/email. Approved cancellation restored 10.00 and removed the absence.
+  Log: `target/verification/item30/notification-verified.log`; service logs are in its
+  `notification/` sibling directory. Earlier failed probes are not passing evidence.
+- Final frontend lint passed with zero errors and six pre-existing warnings outside
+  changed files; standalone TypeScript and production build passed. The restricted
+  Google Fonts fetch failed initially; the system-trust, network-enabled build
+  succeeded. `next.config.ts` still skips build-time type checking, so the separate
+  successful TypeScript command is the typecheck evidence. Logs:
+  `frontend-lint-final.log`, `frontend-types-final.log`, `frontend-build-final.log`
+  in the same ignored verification directory.
+- Browser checks used the actual production Next app, cookie BFF and real leave
+  service with disposable PostgreSQL/RabbitMQ. Identity login and gateway forwarding
+  alone were synthetic. The assigned manager saw confirmation and persisted progress
+  reach APPROVED; the owner saw 1.00 taken, 9.00 available and one absence. Confirmed
+  cancellation reached CANCELLED, 0.00 taken/reserved, 10.00 available and no absence.
+  A post-commit cancellation response was deliberately lost: a disabled fresh action
+  and saved-decision retry appeared; reload retained that decision, and retry retrieved
+  the same cancellation workflow without another debit/refund. A seeded permanent
+  calendar failure reached APPROVAL_FAILED with explicit compensation text; the owner
+  saw restored 10.00 and no absence. After the final polling change and rebuild,
+  approval and cancellation again automatically reached terminal states and refreshed
+  balances/calendar. Screenshots: `target/browser-fixture/item30-final-approved.png`,
+  `item30-final-cancelled.png`, `item30-response-loss.png`, `item30-approval-failed.png`
+  and `item30-restored-after-failure.png`. Generated logs/screenshots are ignored.
+
+Not exercised: real identity login/accounts, production employee/role/contact inventory,
+approved real holidays/entitlements, production gateway/CI wiring, production SMTP or
+relay deduplication, production database migrations or deployment. Existing verified-user
+recipient replay is an external rollout prerequisite. No live data was reset or deleted,
+no new dependency was added and no secret is part of these changes.

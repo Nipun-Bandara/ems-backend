@@ -43,7 +43,12 @@ public final class RequestModels {
 
     public record Action(
             @NotBlank @Size(max = 100) String idempotencyKey,
-            @NotBlank @Size(max = 500) String reason) {}
+            @NotBlank @Size(max = 500) String reason,
+            @PositiveOrZero Long version) {
+        public Action(String key, String reason) {
+            this(key, reason, null);
+        }
+    }
 
     public record Route(
             @Positive long approverId,

@@ -26,6 +26,7 @@ http.createServer(async(req,res)=>{
   if(control.status) return reply(control.status,{status:control.status,error:'Fixture error',message:'Synthetic temporary leave service failure'});
   const port=readFileSync(portFile,'utf8').trim();
   const response=await fetch(`http://127.0.0.1:${port}${req.url}`,{method:req.method,headers:{'content-type':'application/json','X-User-Id':String(sessions[kind].userId),'X-User-Roles':sessions[kind].roles.join(',')},body:['GET','HEAD'].includes(req.method)?undefined:body});
+  if(control.loseDecisionResponse && req.method==='POST' && /\/(approve|cancel)$/.test(req.url)) return reply(502,{status:502,error:'Fixture response lost',message:'Synthetic response loss after backend processing'});
   res.writeHead(response.status,{'content-type':'application/json'});res.end(await response.text());
  }catch(error){res.writeHead(502,{'content-type':'application/json'});res.end(JSON.stringify({status:502,error:'Fixture unavailable',message:error.message}));}
 }).listen(18080,'127.0.0.1',()=>process.stdout.write('Synthetic identity/gateway fixture listening on 18080\n'));
