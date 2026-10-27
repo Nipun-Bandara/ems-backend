@@ -16,10 +16,15 @@ import org.springframework.web.bind.annotation.*;
 public class LeaveBalanceController {
     private final LeaveBalanceService service;
     private final WorkingCalendar calendar;
+    private final com.ems.leave_service.request.LeaveWorkflowService workflows;
 
-    public LeaveBalanceController(LeaveBalanceService service, WorkingCalendar calendar) {
+    public LeaveBalanceController(
+            LeaveBalanceService service,
+            WorkingCalendar calendar,
+            com.ems.leave_service.request.LeaveWorkflowService workflows) {
         this.service = service;
         this.calendar = calendar;
+        this.workflows = workflows;
     }
 
     private static final String ADMIN = "hasAnyRole('HR_MANAGER','SYSTEM_ADMIN')";
@@ -76,8 +81,13 @@ public class LeaveBalanceController {
     }
 
     @GetMapping("/calendar")
-    public WorkingCalendar.Policy policy() {
-        return calendar.policy();
+    public com.ems.leave_service.request.WorkflowModels.Calendar calendar(
+            Authentication a,
+            @RequestParam(required = false) @Positive Long employeeId,
+            @RequestParam(required = false) @Positive Long departmentId) {
+        boolean hr =
+                a.getAuthorities().stream().anyMatch(role -> role.getAuthority().equals("ROLE_HR_MANAGER"));
+        return workflows.calendar(Long.parseLong(a.getName()), hr, employeeId, departmentId);
     }
 
     @GetMapping("/holidays")

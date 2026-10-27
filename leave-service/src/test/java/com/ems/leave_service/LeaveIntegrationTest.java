@@ -31,7 +31,12 @@ import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.enabled=true"})
+        properties = {
+            "spring.jpa.hibernate.ddl-auto=validate",
+            "spring.flyway.enabled=true",
+            "ems.leave.workflow.recovery-enabled=false",
+            "ems.leave.workflow.commands-enabled=false"
+        })
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 @Testcontainers
@@ -95,7 +100,7 @@ class LeaveIntegrationTest {
         assertThat(jdbc.queryForList(
                         "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
                         String.class))
-                .containsExactly("1", "2", "3", "4");
+                .containsExactly("1", "2", "3", "4", "5");
         assertThat(jdbc.queryForObject("SELECT to_regclass('outbox_event')::text", String.class))
                 .isEqualTo("outbox_event");
         assertThat(admin.getQueueProperties("leave.q")).isNotNull();
@@ -662,5 +667,228 @@ class LeaveIntegrationTest {
         assertThatThrownBy(() -> requests.estimate(new com.ems.leave_service.request.RequestModels.EstimateInput(
                         half.startDate(), half.endDate().plusDays(1), half.dayFraction())))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
+    @Autowired
+    com.ems.leave_service.request.LeaveWorkflowService workflows;
+
+    @Autowired
+    com.ems.leave_service.request.WorkflowFaults faults;
+
+    private com.ems.leave_service.request.WorkflowModels.Start approval(long version, String key) {
+        return new com.ems.leave_service.request.WorkflowModels.Start(version, key, "Approved coverage");
+    }
+
+    private void step(UUID id) {
+        var w = workflows.load(id);
+        workflows.advance(id, w.stepId());
+    }
+
+    private void complete(UUID id) {
+        for (int i = 0;
+                i < 8
+                        && !com.ems.leave_service.request.LeaveWorkflowService.terminal(
+                                workflows.load(id).state());
+                i++) step(id);
+    }
+
+    @Test
+    void approvalHttpPermissionsVersionAndLogicalEvent() throws Exception {
+        var e = requestEmployee(8001, "10.00");
+        var r = requests.submit(8001, request(balances.balance(e).typeId(), "2026-12-08", "2026-12-08", "approve"));
+        String path = "/api/leaves/requests/" + r.id() + "/approve";
+        for (long actor : List.of(8001L, 8999L))
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                            .header("X-User-Id", actor)
+                            .header("X-User-Roles", "HR_MANAGER")
+                            .contentType("application/json")
+                            .content(json.writeValueAsString(approval(0, "a"))))
+                    .andExpect(status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                        .header("X-User-Id", 8101)
+                        .header("X-User-Roles", "EMPLOYEE")
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(approval(1, "a"))))
+                .andExpect(status().isConflict());
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                        .header("X-User-Id", 8101)
+                        .header("X-User-Roles", "EMPLOYEE")
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(approval(0, "a"))))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        UUID id = UUID.fromString(json.readTree(response.getResponse().getContentAsString())
+                .path("id")
+                .asText());
+        assertThat(workflows.start(r.id(), 8101, approval(0, "a"), false).id()).isEqualTo(id);
+        complete(id);
+        for (int i = 0; i < 3; i++) step(id);
+        assertThat(requests.load(r.id(), false).status().name()).isEqualTo("APPROVED");
+        assertThat(balances.balance(e).taken()).isEqualTo("1.00");
+        assertThat(balances.entries(e)).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_absence WHERE request_id=?", Integer.class, r.id()))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND type='leave.approved'",
+                        Integer.class,
+                        r.id().toString()))
+                .isEqualTo(1);
+        assertThat(workflows.calendar(8001, false, null, null).absences()).hasSize(1);
+        assertThatThrownBy(() -> workflows.calendar(8999, false, 8001L, null))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM leave_workflow_audit WHERE workflow_id=?", id))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+    }
+
+    @Test
+    void permanentCalendarFailureCompensatesOnceAndFencesStaleDeliveries() {
+        var e = requestEmployee(8002, "10.00");
+        var r = requests.submit(8002, request(balances.balance(e).typeId(), "2026-12-09", "2026-12-09", "failure"));
+        faults.failCalendar(r.id());
+        var w = workflows.start(r.id(), 8102, approval(0, "a"), false);
+        step(w.id());
+        assertThat(balances.balance(e).taken()).isEqualTo("1.00");
+        var calendarStep = workflows.load(w.id());
+        // A partial integration write is cleaned up on compensation.
+        jdbc.update(
+                "INSERT INTO leave_absence VALUES (?,?,?,?,?,?)",
+                r.id(),
+                w.id(),
+                8002,
+                r.startDate(),
+                r.endDate(),
+                "FULL");
+        complete(w.id());
+        for (var stale : List.of(w, calendarStep))
+            for (int i = 0; i < 3; i++) workflows.advance(stale.id(), stale.stepId());
+        assertThat(workflows.load(w.id()).state()).isEqualTo("APPROVAL_FAILED");
+        assertThat(balances.balance(e).available()).isEqualTo("10.00");
+        assertThat(balances.balance(e).taken()).isEqualTo("0.00");
+        assertThat(balances.balance(e).reserved()).isEqualTo("0.00");
+        assertThat(balances.entries(e)).hasSize(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_absence WHERE request_id=?", Integer.class, r.id()))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND type='leave.balance.restored'",
+                        Integer.class,
+                        r.id().toString()))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=? AND type='leave.approved'",
+                        Integer.class,
+                        r.id().toString()))
+                .isZero();
+    }
+
+    @Test
+    void crashRollsBackEffectAndDeadlineTriggersRecoverableCompensation() {
+        var e = requestEmployee(8003, "10.00");
+        var r = requests.submit(8003, request(balances.balance(e).typeId(), "2026-12-10", "2026-12-10", "crash"));
+        var w = workflows.start(r.id(), 8103, approval(0, "a"), false);
+        faults.crashBeforeCommit(r.id(), "DEBIT");
+        assertThatThrownBy(() -> step(w.id())).isInstanceOf(IllegalStateException.class);
+        assertThat(balances.entries(e)).isEmpty();
+        assertThat(workflows.load(w.id()).state()).isEqualTo("DEBIT");
+        step(w.id());
+        jdbc.update("UPDATE leave_workflow SET deadline=now()-interval '1 second' WHERE id=?", w.id());
+        complete(w.id());
+        assertThat(workflows.load(w.id()).state()).isEqualTo("APPROVAL_FAILED");
+        assertThat(balances.balance(e).available()).isEqualTo("10.00");
+    }
+
+    @Test
+    void concurrentApprovalCancellationAndReplaysNeverDoubleSettle() throws Exception {
+        for (int iteration = 0; iteration < 3; iteration++) {
+            long employee = 8010 + iteration;
+            var e = requestEmployee(employee, "10.00");
+            var r = requests.submit(
+                    employee, request(balances.balance(e).typeId(), "2026-12-11", "2026-12-11", "race"));
+            var approval = workflows.start(r.id(), employee + 100, approval(0, "a"), false);
+            if (iteration > 0) step(approval.id());
+            if (iteration > 1) complete(approval.id());
+            var current = requests.load(r.id(), false);
+            try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                var progress = pool.submit(() -> complete(approval.id()));
+                var cancelInput =
+                        new java.util.concurrent.atomic.AtomicReference<>(approval(current.version(), "cancel"));
+                var cancellation = pool.submit(() -> {
+                    for (int retry = 0; retry < 4; retry++) {
+                        try {
+                            return workflows.start(r.id(), employee, cancelInput.get(), true);
+                        } catch (org.springframework.web.server.ResponseStatusException conflict) {
+                            if (conflict.getStatusCode().value() != 409) throw conflict;
+                            cancelInput.set(
+                                    approval(requests.load(r.id(), false).version(), "cancel"));
+                        }
+                    }
+                    throw new AssertionError("Cancellation never converged");
+                });
+                progress.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                var c = cancellation.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                complete(c.id());
+                complete(approval.id());
+                complete(c.id());
+                assertThat(workflows
+                                .start(r.id(), employee, cancelInput.get(), true)
+                                .id())
+                        .isEqualTo(c.id());
+            }
+            assertThat(requests.load(r.id(), false).status().name()).isEqualTo("CANCELLED");
+            assertThat(balances.balance(e).available()).isEqualTo("10.00");
+            assertThat(balances.balance(e).taken()).isEqualTo("0.00");
+            assertThat(balances.entries(e).size()).isLessThanOrEqualTo(2);
+            assertThat(jdbc.queryForObject(
+                            "SELECT count(*) FROM leave_absence WHERE request_id=?", Integer.class, r.id()))
+                    .isZero();
+        }
+    }
+
+    private org.springframework.context.ConfigurableApplicationContext restartContext(boolean recover) {
+        return new org.springframework.boot.builder.SpringApplicationBuilder(LeaveServiceApplication.class)
+                .run(
+                        "--spring.profiles.active=test",
+                        "--server.port=0",
+                        "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
+                        "--spring.datasource.username=" + POSTGRES.getUsername(),
+                        "--spring.datasource.password=" + POSTGRES.getPassword(),
+                        "--spring.rabbitmq.host=" + RABBIT.getHost(),
+                        "--spring.rabbitmq.port=" + RABBIT.getAmqpPort(),
+                        "--spring.rabbitmq.username=" + RABBIT.getAdminUsername(),
+                        "--spring.rabbitmq.password=" + RABBIT.getAdminPassword(),
+                        "--ems.messaging.enabled=false",
+                        "--ems.leave.workflow.recovery-enabled=" + recover);
+    }
+
+    @Test
+    void applicationContextRestartRecoversApprovalAndCancellationFromDatabase() {
+        var e = requestEmployee(8020, "10.00");
+        var r = requests.submit(8020, request(balances.balance(e).typeId(), "2026-12-14", "2026-12-14", "restart"));
+        UUID workflow;
+        try (var first = restartContext(false)) {
+            var engine = first.getBean(com.ems.leave_service.request.LeaveWorkflowService.class);
+            var w = engine.start(r.id(), 8120, approval(0, "approve"), false);
+            workflow = w.id();
+            engine.advance(w.id(), w.stepId());
+            assertThat(engine.load(workflow).state()).isEqualTo("CALENDAR");
+        }
+        UUID cancel;
+        try (var second = restartContext(true)) {
+            var engine = second.getBean(com.ems.leave_service.request.LeaveWorkflowService.class);
+            await().atMost(Duration.ofSeconds(15))
+                    .untilAsserted(
+                            () -> assertThat(engine.load(workflow).state()).isEqualTo("APPROVED"));
+            var current = requests.load(r.id(), false);
+            cancel = engine.start(r.id(), 8020, approval(current.version(), "cancel"), true)
+                    .id();
+        }
+        try (var third = restartContext(true)) {
+            var engine = third.getBean(com.ems.leave_service.request.LeaveWorkflowService.class);
+            await().atMost(Duration.ofSeconds(15))
+                    .untilAsserted(() -> assertThat(engine.load(cancel).state()).isEqualTo("CANCELLED"));
+        }
+        assertThat(balances.balance(e).available()).isEqualTo("10.00");
+        assertThat(balances.entries(e)).hasSize(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_absence WHERE request_id=?", Integer.class, r.id()))
+                .isZero();
     }
 }

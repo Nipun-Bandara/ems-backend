@@ -115,7 +115,7 @@ public class LeaveRequestService {
         return fallback.getFirst();
     }
 
-    private boolean eligible(long employee, long reviewer) {
+    public boolean eligible(long employee, long reviewer) {
         return employee != reviewer && Boolean.TRUE.equals(jdbc.queryForObject("""
             SELECT EXISTS(SELECT 1 FROM employee_projection e JOIN employee_projection p ON p.user_id=? AND p.active=true
               LEFT JOIN leave_reviewer r ON r.user_id=p.user_id WHERE e.user_id=? AND
@@ -148,7 +148,7 @@ public class LeaveRequestService {
         // Apply the same eligibility predicate as detail access; never return an unscoped list.
         return jdbc
                 .query(
-                        "SELECT * FROM leave_request WHERE employee_id<>? AND status='PENDING' AND (approver_id=? OR ?) ORDER BY created_at,id",
+                        "SELECT * FROM leave_request WHERE employee_id<>? AND status IN ('PENDING','APPROVAL_IN_PROGRESS','APPROVED','APPROVAL_FAILED') AND (approver_id=? OR ?) ORDER BY created_at,id",
                         this::map,
                         actor,
                         actor,
@@ -247,7 +247,7 @@ public class LeaveRequestService {
                 Map.of("request", r, "actorId", actor, "action", action, "reason", reason));
     }
 
-    private LeaveRequest load(UUID id, boolean lock) {
+    public LeaveRequest load(UUID id, boolean lock) {
         var rows = jdbc.query("SELECT * FROM leave_request WHERE id=?" + (lock ? " FOR UPDATE" : ""), this::map, id);
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Leave request not found");
         return rows.getFirst();

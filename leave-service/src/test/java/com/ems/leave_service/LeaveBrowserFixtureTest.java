@@ -66,6 +66,19 @@ class LeaveBrowserFixtureTest {
                         new com.ems.leave_service.request.RequestModels.ReviewerSnapshot(
                                 com.ems.leave_service.request.RequestModels.ReviewerRole.HR_MANAGER,
                                 java.time.Instant.now().minusSeconds(1)));
+                if ("true".equals(System.getenv("LEAVE_BROWSER_SAGA_FAILURE"))) {
+                    var failure = requests.submit(
+                            6101,
+                            new com.ems.leave_service.request.RequestModels.Submit(
+                                    type.id(),
+                                    java.time.LocalDate.parse("2026-12-17"),
+                                    java.time.LocalDate.parse("2026-12-17"),
+                                    com.ems.leave_service.request.RequestModels.Fraction.FULL,
+                                    "Calendar failure browser fixture",
+                                    "calendar-failure"));
+                    context.getBean(com.ems.leave_service.request.WorkflowFaults.class)
+                            .failCalendar(failure.id());
+                }
                 var entitlement = service.allocate(
                         new LeaveModels.Allocation(6103, type.id(), 2026, BigDecimal.TEN, "Browser fixture allocation"),
                         6101);

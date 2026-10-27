@@ -15,6 +15,7 @@ public class MessagingConfig {
     @Bean
     public Declarables leaveTopology() {
         return QueueFactory.declare(
-                "leave", List.of("user.verified", "user.assignment.updated", "employee.profile.updated"));
+                "leave",
+                List.of("leave.workflow.step", "user.verified", "user.assignment.updated", "employee.profile.updated"));
     }
 }

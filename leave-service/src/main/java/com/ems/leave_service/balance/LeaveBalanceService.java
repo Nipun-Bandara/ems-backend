@@ -281,6 +281,25 @@ public class LeaveBalanceService {
                     reason.trim());
     }
 
+    /** Append one immutable reversal, sharing the entitlement lock and internal key namespace. */
+    @Transactional
+    public void restore(UUID entitlementId, UUID reservationId, long actor, String reason) {
+        lock(entitlementId);
+        var row = jdbc.queryForMap(
+                "SELECT * FROM leave_reservation WHERE id=? AND entitlement_id=?", reservationId, entitlementId);
+        if (row.get("status").equals("RELEASED")) return;
+        if (row.get("status").equals("TAKEN")) {
+            String key = "reservation:restore:" + reservationId;
+            if (jdbc.queryForObject(
+                            "SELECT count(*) FROM leave_balance_entry WHERE entitlement_id=? AND idempotency_key=?",
+                            Integer.class,
+                            entitlementId,
+                            key)
+                    == 0) insertEntry(entitlementId, "TAKEN", (BigDecimal) row.get("days"), key, actor, reason);
+        }
+        jdbc.update("UPDATE leave_reservation SET status='RELEASED' WHERE id=?", reservationId);
+    }
+
     private static BigDecimal decimal(BigDecimal days) {
         try {
             if (days == null || days.precision() - days.scale() > 7) throw new ArithmeticException();

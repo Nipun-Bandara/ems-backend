@@ -14,9 +14,12 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/leaves")
 public class LeaveRequestController {
     private final LeaveRequestService service;
+    private final com.ems.leave_service.request.LeaveWorkflowService workflows;
 
-    public LeaveRequestController(LeaveRequestService service) {
+    public LeaveRequestController(
+            LeaveRequestService service, com.ems.leave_service.request.LeaveWorkflowService workflows) {
         this.service = service;
+        this.workflows = workflows;
     }
 
     private long actor(Authentication a) {
@@ -53,14 +56,48 @@ public class LeaveRequestController {
         return service.get(id, actor(a), hr(a));
     }
 
+    @PostMapping("/requests/{id}/approve")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public com.ems.leave_service.request.WorkflowModels.Workflow approve(
+            Authentication a,
+            @PathVariable UUID id,
+            @RequestBody @Valid com.ems.leave_service.request.WorkflowModels.Start input) {
+        return workflows.start(id, actor(a), input, false);
+    }
+
+    @GetMapping("/requests/{id}/workflows")
+    public List<com.ems.leave_service.request.WorkflowModels.Workflow> workflows(
+            Authentication a, @PathVariable UUID id) {
+        return workflows.forRequest(id, actor(a), hr(a));
+    }
+
+    @GetMapping("/workflows/{id}")
+    public com.ems.leave_service.request.WorkflowModels.Workflow workflow(Authentication a, @PathVariable UUID id) {
+        return workflows.get(id, actor(a), hr(a));
+    }
+
     @PostMapping("/requests/{id}/reject")
     public LeaveRequest reject(Authentication a, @PathVariable UUID id, @RequestBody @Valid Action input) {
         return service.finish(id, actor(a), input, true);
     }
 
     @PostMapping("/requests/{id}/cancel")
-    public LeaveRequest cancel(Authentication a, @PathVariable UUID id, @RequestBody @Valid Action input) {
-        return service.finish(id, actor(a), input, false);
+    public Object cancel(Authentication a, @PathVariable UUID id, @RequestBody @Valid Action input) {
+        var r = service.get(id, actor(a), hr(a));
+        if (r.status() == Status.PENDING
+                || (r.status() == Status.CANCELLED
+                        && workflows.forRequest(id, actor(a), hr(a)).stream()
+                                .noneMatch(w -> w.operation().equals("CANCEL"))))
+            return service.finish(id, actor(a), input, false);
+        if (input.version() == null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Version required for approved cancellation");
+        return workflows.start(
+                id,
+                actor(a),
+                new com.ems.leave_service.request.WorkflowModels.Start(
+                        input.version(), input.idempotencyKey(), input.reason()),
+                true);
     }
 
     @PostMapping("/requests/{id}/route")
