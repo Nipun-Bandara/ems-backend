@@ -18,11 +18,14 @@ public class TimesheetController {
     private final TimesheetService service;
     private final ProjectionStore projections;
     private final OrganizationCalendar calendar;
+    private final ReviewScope scope;
 
-    public TimesheetController(TimesheetService service, ProjectionStore projections, OrganizationCalendar calendar) {
+    public TimesheetController(
+            TimesheetService service, ProjectionStore projections, OrganizationCalendar calendar, ReviewScope scope) {
         this.service = service;
         this.projections = projections;
         this.calendar = calendar;
+        this.scope = scope;
     }
 
     private long actor(Authentication a) {
@@ -68,6 +71,63 @@ public class TimesheetController {
     @PostMapping("/{id}/submit")
     public Sheet submit(Authentication a, @PathVariable UUID id, @Valid @RequestBody Submit input) {
         return service.submit(id, actor(a), input);
+    }
+
+    @GetMapping("/permissions")
+    public Permissions permissions(Authentication a) {
+        return new Permissions(scope.reviewer(actor(a)), scope.active(actor(a)));
+    }
+
+    @GetMapping("/reviewer/inbox")
+    public List<Sheet> inbox(Authentication a) {
+        return service.inbox(actor(a));
+    }
+
+    @GetMapping("/reviewer/{id}")
+    public Sheet reviewDetail(Authentication a, @PathVariable UUID id) {
+        return service.reviewDetail(id, actor(a));
+    }
+
+    @PostMapping("/{id}/approve")
+    public Sheet approve(Authentication a, @PathVariable UUID id, @Valid @RequestBody Review input) {
+        return service.decide(id, actor(a), input, false);
+    }
+
+    @PostMapping("/{id}/reject")
+    public Sheet reject(Authentication a, @PathVariable UUID id, @Valid @RequestBody Review input) {
+        return service.decide(id, actor(a), input, true);
+    }
+
+    @PostMapping("/{id}/reopen")
+    public Sheet reopen(Authentication a, @PathVariable UUID id, @Valid @RequestBody Submit input) {
+        return service.reopen(id, actor(a), input);
+    }
+
+    @GetMapping("/summary")
+    public List<Summary> summary(
+            Authentication a,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) Long departmentId) {
+        return service.summary(actor(a), from, to, employeeId, departmentId);
+    }
+
+    @PutMapping("/admin/employees/{userId}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void employee(
+            @PathVariable @jakarta.validation.constraints.Positive long userId,
+            @Valid @RequestBody EmployeeScope input) {
+        scope.reconcile(userId, input);
+    }
+
+    @PutMapping("/admin/reviewers/{userId}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void reviewer(
+            @PathVariable @jakarta.validation.constraints.Positive long userId, @Valid @RequestBody Reviewer input) {
+        scope.reviewer(userId, input);
     }
 
     @PutMapping("/admin/projections")

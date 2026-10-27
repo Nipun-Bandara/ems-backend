@@ -24,6 +24,8 @@ public class MessagingConfig {
                 "timesheet",
                 List.of(
                         "user.verified",
+                        "user.assignment.updated",
+                        "employee.profile.updated",
                         "project.created",
                         "project.updated",
                         "project.deleted",

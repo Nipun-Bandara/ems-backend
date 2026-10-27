@@ -1,20 +1,24 @@
-# Timesheet drafts and submission
+# Timesheet drafts, submission and review
 
 ## Implementation and compatibility / PR notes
 
-Backend and frontend branch: `feat/timesheet-service`, based on their existing local `development` tips.
+Backend and frontend branch: `feat/timesheet-approval`, cut from current local `development` tips.
+Backend base: `a7420e35e360ac0a4d929f444f8f2c1633513c0a`; frontend base: `192fcfbea413bf28288d1646ebca9a4d4f2a39b1`.
 Inspected actual project/team implementation (item 26) and leave workflow/outbox implementation (item 30).
 Projects are owned by **org-service**, not a separate project-service; project membership is inherited from its team.
 
 The new Maven module listens on **8086** and owns **timesheet_db**. Gateway development, staging and production
 profiles route `/api/timesheets/**` to `TIMESHEET_SERVICE_URL` (local default `http://localhost:8086`).
 No reads of other services' databases and no synchronous upstream calls are made by timesheet reads or writes.
-Storage is disabled because timesheets contain no attachments. Payroll and review transitions are deliberately absent.
+Storage is disabled because timesheets contain no attachments. Review is implemented; summaries contain approved minutes only, with no payroll values.
 
 Runtime dependencies match the installed Spring Boot 4.0.8 / Java 21 service stack: ems-common, JDBC via JPA,
 PostgreSQL, Flyway, MVC/validation/security, AMQP, actuator and AspectJ for the shared idempotent consumer.
 No new library versions or frontend packages are introduced. Existing shared outbox/storage/security code is unchanged.
-Testcontainers PostgreSQL and RabbitMQ follow existing integration-test conventions. Lombok is inherited from the
+Testcontainers PostgreSQL and RabbitMQ follow existing integration-test conventions.
+Notification-service adds **test-only** Testcontainers PostgreSQL and JUnit integration dependencies, using the
+parent-managed versions, to exercise its own Flyway migrations and durable delivery recovery. No new runtime
+libraries, shared common changes, storage dependencies, or frontend packages are introduced. Lombok is inherited from the
 existing module scaffold; it is not required by the new business code.
 
 Existing project and team event payloads remain compatible. The sole producer addition is `project.deleted`,
@@ -42,7 +46,8 @@ mvn -pl timesheet-service spring-boot:run
 The service accepts only gateway-forwarded identity, following ems-common's GatewayAuthenticationFilter.
 Expose the gateway to clients and keep service ports private. The gateway verifies JWTs and removes spoofed
 identity headers. There are no employee ID parameters on self-write APIs; even admins cannot edit someone
-else's sheet. Backfill is restricted separately to SYSTEM_ADMIN. All sheet reads are self-only.
+else's sheet. Backfill and reviewer reconciliation are restricted separately to SYSTEM_ADMIN. Owner APIs remain self-only;
+reviewer reads and summary queries have the scope described below.
 
 Frontend: use the installed Node runtime and the existing Next.js commands. Open **`/timesheets`** directly.
 No shared navigation files are changed under the page/service-only frontend scope. The page checks the session
@@ -52,7 +57,7 @@ An active local employee and eligible project membership are required for writes
 ## Projections, ordering and history
 
 `timesheet.q` subscribes to `user.verified`, `project.created`, `project.updated`, `project.deleted`,
-`team.member.added` and `team.member.removed`. Shared IdempotentConsumer records and updates commit together.
+`team.member.added`, `team.member.removed`, `user.assignment.updated` and `employee.profile.updated`. Shared IdempotentConsumer records and updates commit together.
 Verified users are active employee shells, matching employee-service and leave-service conventions. Administrative
 snapshots also support inactive employees. Identity currently lacks a general employee-status event; reconcile
 status explicitly when it changes rather than relying on profile updates, which omit status.
@@ -116,7 +121,7 @@ Canonical checked-in contract: `timesheet-service/api/openapi.json`.
 Regenerate the frontend service types using its existing openapi-typescript installation:
 
 ```sh
-node_modules/.bin/openapi-typescript ../ems-backend/timesheet-service/api/openapi.json -o app/services/timesheets-api.d.ts
+node_modules/.bin/openapi-typescript ../ems-backend/timesheet-service/api/openapi.json -o 'app/(user)/timesheets/contract.d.ts'
 ```
 
 | Method | Path after `/api/timesheets` | Behavior |
@@ -138,10 +143,11 @@ sheet accepts at most 500 entries; all entries on a date together must total at 
 at least one positive entry. Validation failures roll back the whole write. Database uniqueness enforces one sheet
 per employee/week. Stale draft versions and frozen writes return 409. Another employee's sheet returns 404.
 
-Statuses DRAFT, SUBMITTED, APPROVED, REJECTED and review audit fields are stored. Only DRAFT creation/update/delete
-and DRAFT→SUBMITTED are implemented. Created/updated/submitted actor IDs and timestamps, plus mutation audit rows,
-are persisted. A retry of submit returns the already frozen result regardless of the original version and adds no
-second submission event. Submission is serialized against saves and concurrent submits.
+DRAFT→SUBMITTED→APPROVED/REJECTED is implemented. Only the owner can explicitly reopen REJECTED→DRAFT.
+Created/updated/submitted/reviewed actor IDs and timestamps, mutation audit rows, and append-only decision rows
+are persisted. A retry of submit returns the frozen result and adds no second event for that submission.
+After reopen, the previous submission version cannot submit the new draft. Reviewed drafts cannot be deleted;
+this preserves their decision history. Submission is serialized against saves and concurrent submits.
 
 ## Verify
 
@@ -159,7 +165,7 @@ the response to submit and use Retry submission; verify the same sheet and one e
 verify the first sheet cannot be written. Repeat reads with org-service unavailable. Check empty eligible-project
 messaging before backfill and selectable project dates after backfill.
 
-### Executed on 2026-10-27
+### Item 31 verification recorded on 2026-10-27
 
 - Baseline backend root `mvn -B -ntp verify`: passed before changes.
 - Backend root `mvn -B -ntp verify` after module/routes/event addition: passed (181 discovered tests, 3 skipped).
@@ -180,3 +186,146 @@ backfill export against identity/org/employee APIs was not run. Before rollout, 
 service credentials/routing/timezone, perform the documented backfill, and supply authoritative historical
 membership where needed. Approval/payroll consumers are outside this item; a durable subscriber to
 `timesheet.submitted` must be provided by that downstream work. No deployment or Git commit was performed.
+
+
+## Manager review (item 32) / PR description
+
+Managers can open `/timesheets/review`, inspect each entry and approve or reject a submitted week. A rejection
+requires a trimmed, nonblank reason of at most 500 characters. Employees see the complete decision history in
+`/timesheets`; an active owner can reopen a rejected sheet, edit it and resubmit for a new decision. Reopening
+clears only current submission/review fields; every prior decision retains reviewer, timestamp, outcome, reason,
+and version. Decision history is ordered by version and cannot be deleted via the application.
+
+### Authorization and reconciliation
+
+The eligibility predicate matches leave's documented reviewer scopes: an **active** current reporting manager,
+an active `DEPARTMENT_HEAD` in the employee's current department, or an active `HR_MANAGER` reviewer. Self-review
+is always forbidden, including for HR. The same SQL predicate scopes inbox rows, reviewer detail and decisions. Draft entry detail remains owner-only, including after reopen.
+Unlike leave's assigned-approver workflow, timesheet decisions do not route to a single assignee: any currently
+eligible reviewer in those scopes may decide. A role claimed in a browser or an HR JWT alone does not grant
+review authority; privileged reviewer snapshots must be reconciled locally by SYSTEM_ADMIN, as with leave.
+No shared-database access or synchronous upstream authorization lookup is used.
+
+Before rollout, reconcile active status, department, reporting manager and privileged reviewers from their
+owner APIs through the gateway. Item 31's membership backfill does **not** supply this review scope. New bindings
+receive future events only. Use these SYSTEM_ADMIN-only endpoints for initial reconciliation and missed changes:
+
+- `PUT /api/timesheets/admin/employees/{userId}` with `{active,departmentId,reportingManagerUserId,asOf}`.
+  IDs may be null to remove an assignment; self-reporting is rejected. `asOf` must be a genuine source watermark.
+- `PUT /api/timesheets/admin/reviewers/{userId}` with `{role,asOf}`. Role is `DEPARTMENT_HEAD`, `HR_MANAGER`,
+  or null to revoke the privileged scope; the employee must already be active.
+
+Separate monotonic clocks for active status, identity department assignments and employee manager profiles keep
+late profile snapshots from replacing newer identity department assignments. Live assignment events use
+`assignedAt`, profile events use the envelope `occurredAt`. Profile `departmentId` is deliberately ignored, as
+in leave. Reviewer-role events are not provided by current producers: role changes/revocations require explicit
+reconciliation. Projection writes and decisions coordinate with the same service-local advisory lock, so an
+in-flight decision checks a coherent current scope. Department summaries use current department membership.
+
+### New API contract
+
+The checked-in OpenAPI contract is additive (version 1.1.0); existing draft/submission routes and payloads remain
+compatible. `Sheet` adds required `decisions: Decision[]`, empty before any decision. Current review fields remain
+nullable. The frontend generates a page-local contract and uses the existing axios/cookie BFF. Page entry requires
+a session cookie; all reads/writes are authorized again by timesheet-service. The UI does not treat button hiding
+as authorization.
+
+| Method | Path after `/api/timesheets` | Behavior |
+| --- | --- | --- |
+| GET | `/permissions` | Current active/reviewer capability flags for UI |
+| GET | `/reviewer/inbox` | Submitted sheets in current reviewer scope; 403 without reviewer scope |
+| GET | `/reviewer/{id}` | Scoped entries and full decision history; unrelated/self reviewer gets 403 |
+| POST | `/{id}/approve` | `{version,reason?}`; decide submitted sheet |
+| POST | `/{id}/reject` | `{version,reason}`; nonblank reason required |
+| POST | `/{id}/reopen` | Owner-only `{version}`; rejected sheet becomes a draft |
+| GET | `/summary?from=...&to=...&employeeId=...` | Approved minutes grouped by employee/week |
+| GET | `/summary?from=...&to=...&departmentId=...` | Same-department head or HR department summary |
+
+Summary dates are inclusive Mondays, at most 53 weeks. Choose employee or department, never both. Without a
+scope parameter the summary is the active owner's own approved weeks. Another employee requires the reviewer
+predicate; department scope requires an active same-department head or HR. Reporting managers do not implicitly
+receive department-wide access. Draft, submitted and rejected sheets contribute no minutes. No pay/rate/currency
+fields are stored or returned.
+
+### Atomicity and events
+
+Review locks the sheet row, checks authorization, `SUBMITTED` and the expected version, and performs a guarded
+update. The new status/version, append-only decision, mutation audit and shared outbox insert commit in one
+transaction. Concurrent approve/reject calls produce one 200 and one 409; the loser adds no decision or event.
+Lost decision responses are resolved by reloading detail/history; repeating an old version returns 409 rather
+than creating another logical event. Reopen also checks the current version and leaves the prior decision rows.
+
+Each decision emits `timesheet.decided` in the existing EventEnvelope. Payload:
+`{decisionId,sheetId,employeeId,weekStart,outcome,reviewerId,decidedAt,reason,version}`. One decisionId identifies one
+logical decision, including a new review after resubmission. Existing `timesheet.submitted` consumers should treat
+sheet ID plus submission version as the logical submission; sheet ID alone is no longer a lifetime submission key.
+Migrations V3 (timesheets) and V7 (notifications) are additive and retain existing rows. Start notification-service
+with its migration/queue before enabling decisions; shared outbox retries preserve events while it is unavailable.
+
+`notification.timesheet.q` binds `timesheet.decided` and `user.verified`, using common retry/parking topology and
+IdempotentConsumer. The consumer transaction stores one delivery per decisionId and unique eventId; it never sends
+SMTP on the broker thread. A local contact projection accepts newer verifiedAt snapshots. V7 copies contacts
+already owned by notification-service's leave replica. Missing historical contacts require replay of authoritative
+`user.verified` events through the existing broker operations procedure; missing contact rows leave delivery pending.
+
+Delivery workers lock due rows with `FOR UPDATE SKIP LOCKED`, retain attempts/error/next-attempt/sent timestamps,
+and retry failures indefinitely with bounded backoff (up to 300 seconds). Successful rows are not resent on normal
+redelivery or worker retries. Both outcomes have dedicated templates. Stable SMTP Message-ID uses decisionId.
+SMTP cannot guarantee exactly-once delivery across an acceptance/commit crash; a relay may receive a duplicate
+with the same Message-ID in that ambiguity window. Broker deduplication and durable logical delivery tracking do
+not claim to eliminate that SMTP limitation. Approval state never depends on notification availability.
+
+### Focused verification and disposable browser walkthrough
+
+```sh
+mvn -B -ntp -pl timesheet-service,notification-service -am verify
+python3 -m unittest discover -s timesheet-service/scripts -p test_backfill.py -v
+# frontend
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+For browser verification, start the existing opt-in disposable fixture (PostgreSQL/RabbitMQ; never development data):
+
+```sh
+TIMESHEET_BROWSER_FIXTURE=true mvn -pl timesheet-service test -Dtest=TimesheetBrowserFixtureTest
+node timesheet-service/browser-fixture/gateway.mjs
+# frontend, after build; test gateway binds only loopback
+GATEWAY_INTERNAL_URL=http://127.0.0.1:18086 npm run start -- --hostname 127.0.0.1 --port 3006
+```
+
+Sign in at `http://127.0.0.1:3006/auth` with synthetic `manager@example.test` and any nonempty form-valid password.
+The fixture manager (6201) reviews employee 6101; unrelated manager (6202) reviews only employee 6102.
+Synthetic employee login is `employee@example.test`; unrelated manager login is `unrelated@example.test`.
+Open `/timesheets/review`, inspect the 90-minute entry, try rejecting with no reason, then reject with a reason.
+As employee, check history, reopen, change/save entries and resubmit. As manager, approve the new submission;
+reload both pages and confirm both decisions remain. As unrelated manager, confirm the first employee is absent.
+As employee, open the review URL and confirm denial and no review actions. API integration tests separately assert
+403 for unrelated manager and self decision requests, and exercise simultaneous approve/reject.
+Create `timesheet-service/target/browser-fixture/stop` to end the disposable backend. Stop the two local Node servers.
+The fixture uses a synthetic identity/gateway; production identity, SMTP and actual-source reconciliation must be
+validated in the rollout environment. Packaged-gateway integration tests exercise real RS256 identity verification.
+
+### Item 32 verification executed on 2026-10-27
+
+| Check | Evidence |
+| --- | --- |
+| Unchanged backend baseline | `mvn -B -ntp -f /tmp/ems-timesheet-baseline/pom.xml verify` on an archive of development `a7420e3`: BUILD SUCCESS, 182 discovered tests, 3 skipped, no failures/errors. |
+| Timesheet service | `mvn -B -ntp -pl timesheet-service verify`: BUILD SUCCESS; 10 integration tests passed, opt-in browser fixture skipped in this suite. PostgreSQL/RabbitMQ containers exercised authorization, competing decisions (200/409, one decision/outbox row), rejection/reopen/resubmission, scoped approved minutes and all three packaged-gateway profiles. |
+| Final privacy regression | `mvn -B -ntp -pl timesheet-service verify '-Dtest=TimesheetIntegrationTest#managerScopeAtomicDecisionAndSummary+rejectedSheetReopensAndResubmitsWithImmutableHistory+departmentAndHrScopesAreCurrentActiveAndProjectionClocksAreIndependent'`: BUILD SUCCESS, 3 passed, no skips. Includes reviewer denial for reopened draft detail. |
+| Notification service | `mvn -B -ntp -pl notification-service clean verify`: BUILD SUCCESS, 18 tests passed, no skips. Includes real isolated PostgreSQL/Flyway, duplicate event/logical decision deduplication, missing recipient, stale contact snapshot, SMTP failure/retry and successful-send suppression; SMTP sender mocked. |
+| Existing backfill utility | `python3 -m unittest discover -s timesheet-service/scripts -p test_backfill.py -v`: 3 passed. |
+| Frontend baseline and final | `npm run lint`: 0 errors, 6 pre-existing warnings; `npx tsc --noEmit`: passed; `npm run build`: passed. Google Fonts fetching required network access. |
+| Browser | Built frontend + real disposable timesheet backend + synthetic loopback identity/gateway. Manager inbox contained only employee 6101; unrelated manager contained only 6102; employee review URL denied with no decision actions. Empty rejection reason was blocked. Reject reason persisted, owner reopened, revised/saved/resubmitted, manager approved, and employee reload retained APPROVED and both decisions, with editing/reopen controls unavailable. Project label remains correct on final-build reload. |
+
+Initial sandbox-only attempts could not access Docker or fetch existing Google Fonts; the recorded successful
+runs used the required host access. The opt-in browser fixture was run separately and stopped after verification.
+No real credentials, live data, production deployment or Git commit was used. Changes remain reviewable on both
+`feat/timesheet-approval` branches; this document supplies PR implementation, dependency and compatibility notes.
+
+External prerequisites not exercised here: real-source manager/department/role reconciliation; historical contact
+event replay where no local contact exists; real production identity sessions; real SMTP acceptance/delivery;
+and environment rollout of migrations, routing and durable subscriptions. These remain rollout checks. SMTP
+acceptance/commit ambiguity remains as documented above. No final whole-repository backend run is claimed:
+the unchanged whole-repository baseline and the affected services' verification runs are the executed evidence.

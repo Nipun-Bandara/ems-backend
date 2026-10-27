@@ -46,6 +46,34 @@ class TimesheetBrowserFixtureTest {
                                         List.of(
                                                 new Models.Membership(61, 6101, true),
                                                 new Models.Membership(62, 6102, true))));
+                var scope = ctx.getBean(ReviewScope.class);
+                Instant at = Instant.now().minusSeconds(1);
+                scope.reconcile(6201, new Models.EmployeeScope(true, 10L, null, at));
+                scope.reconcile(6202, new Models.EmployeeScope(true, 20L, null, at));
+                scope.reconcile(6101, new Models.EmployeeScope(true, 10L, 6201L, at));
+                scope.reconcile(6102, new Models.EmployeeScope(true, 20L, 6202L, at));
+                var broker = ctx.getBean(org.springframework.amqp.core.AmqpAdmin.class);
+                broker.declareQueue(new org.springframework.amqp.core.Queue("timesheet.browser-events", true));
+                broker.declareBinding(new org.springframework.amqp.core.Binding(
+                        "timesheet.browser-events",
+                        org.springframework.amqp.core.Binding.DestinationType.QUEUE,
+                        "ems.events",
+                        "timesheet.*",
+                        null));
+                var service = ctx.getBean(TimesheetService.class);
+                LocalDate week =
+                        ctx.getBean(OrganizationCalendar.class).current().currentWeekStart();
+                for (long employee : List.of(6101L, 6102L)) {
+                    var sheet = service.create(employee, new Models.Create(week));
+                    var saved = service.save(
+                            sheet.id(),
+                            employee,
+                            new Models.Save(
+                                    sheet.version(),
+                                    List.of(new Models.Entry(
+                                            week, employee == 6101 ? 61 : 62, 90, "Browser review entry"))));
+                    service.submit(saved.id(), employee, new Models.Submit(saved.version()));
+                }
                 Path directory = Path.of("target/browser-fixture");
                 Files.createDirectories(directory);
                 Files.deleteIfExists(directory.resolve("stop"));
