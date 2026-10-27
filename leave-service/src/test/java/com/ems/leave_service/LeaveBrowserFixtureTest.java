@@ -47,10 +47,25 @@ class LeaveBrowserFixtureTest {
                         null));
                 var jdbc = context.getBean(JdbcTemplate.class);
                 jdbc.update(
-                        "INSERT INTO employee_projection(user_id,active) VALUES (6101,true),(6102,true),(6103,true)");
+                        "INSERT INTO employee_projection(user_id,active) VALUES (6101,true),(6102,true),(6103,true),(6201,true),(6202,true)");
                 var service = context.getBean(LeaveBalanceService.class);
                 var type =
                         service.saveType(null, new LeaveModels.TypeInput("FIXTURE", "Fixture balance breakdown", true));
+                jdbc.update("UPDATE employee_projection SET department_id=61");
+                jdbc.update(
+                        "UPDATE employee_projection SET reporting_manager_user_id=6201 WHERE user_id IN (6101,6102,6103)");
+                service.allocate(
+                        new LeaveModels.Allocation(6101, type.id(), 2026, BigDecimal.TEN, "Request browser fixture"),
+                        6202);
+                context.getBean(com.ems.leave_service.balance.WorkingCalendar.class)
+                        .saveHoliday(new com.ems.leave_service.balance.WorkingCalendar.Holiday(
+                                java.time.LocalDate.parse("2026-11-02"), "Synthetic browser holiday"));
+                var requests = context.getBean(com.ems.leave_service.request.LeaveRequestService.class);
+                requests.reviewer(
+                        6202,
+                        new com.ems.leave_service.request.RequestModels.ReviewerSnapshot(
+                                com.ems.leave_service.request.RequestModels.ReviewerRole.HR_MANAGER,
+                                java.time.Instant.now().minusSeconds(1)));
                 var entitlement = service.allocate(
                         new LeaveModels.Allocation(6103, type.id(), 2026, BigDecimal.TEN, "Browser fixture allocation"),
                         6101);

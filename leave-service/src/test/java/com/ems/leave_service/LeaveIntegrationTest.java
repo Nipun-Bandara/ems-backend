@@ -95,7 +95,7 @@ class LeaveIntegrationTest {
         assertThat(jdbc.queryForList(
                         "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
                         String.class))
-                .containsExactly("1", "2", "3");
+                .containsExactly("1", "2", "3", "4");
         assertThat(jdbc.queryForObject("SELECT to_regclass('outbox_event')::text", String.class))
                 .isEqualTo("outbox_event");
         assertThat(admin.getQueueProperties("leave.q")).isNotNull();
@@ -449,5 +449,218 @@ class LeaveIntegrationTest {
 
     private Map<String, Object> row(long id) {
         return jdbc.queryForMap("SELECT * FROM employee_projection WHERE user_id=?", id);
+    }
+
+    @Autowired
+    com.ems.leave_service.request.LeaveRequestService requests;
+
+    private com.ems.leave_service.request.RequestModels.Submit request(
+            UUID type, String start, String end, String key) {
+        return new com.ems.leave_service.request.RequestModels.Submit(
+                type,
+                java.time.LocalDate.parse(start),
+                java.time.LocalDate.parse(end),
+                com.ems.leave_service.request.RequestModels.Fraction.FULL,
+                "Family leave",
+                key);
+    }
+
+    private UUID requestEmployee(long employee, String days) {
+        UUID entitlement = entitlement(employee, days);
+        jdbc.update(
+                "INSERT INTO employee_projection(user_id,active,department_id) VALUES (?,true,77) ON CONFLICT DO NOTHING",
+                employee + 100);
+        jdbc.update(
+                "UPDATE employee_projection SET reporting_manager_user_id=?,department_id=77 WHERE user_id=?",
+                employee + 100,
+                employee);
+        return entitlement;
+    }
+
+    @Test
+    void requestCalendarAccessRejectionAndCancellation() throws Exception {
+        var entitlement = requestEmployee(7001, "10.00");
+        var type = balances.balance(entitlement).typeId();
+        var holiday = java.time.LocalDate.parse("2026-11-02");
+        calendar.saveHoliday(
+                new com.ems.leave_service.balance.WorkingCalendar.Holiday(holiday, "Synthetic request holiday"));
+        var input = request(type, "2026-10-30", "2026-11-03", "weekend");
+        var r = requests.submit(7001, input);
+        assertThat(r.calculatedDays()).isEqualTo("2.00");
+        assertThat(r.status().name()).isEqualTo("PENDING");
+        assertThat(requests.submit(7001, input).id()).isEqualTo(r.id());
+        assertThat(balances.balance(entitlement).available()).isEqualTo("8.00");
+        String path = "/api/leaves/requests/" + r.id();
+        for (long actor : List.of(7001L, 7101L))
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path)
+                            .header("X-User-Id", actor)
+                            .header("X-User-Roles", "EMPLOYEE"))
+                    .andExpect(status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path)
+                        .header("X-User-Id", "7999")
+                        .header("X-User-Roles", "DEPARTMENT_HEAD"))
+                .andExpect(status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                                "/api/leaves/requests/inbox")
+                        .header("X-User-Id", "7999")
+                        .header("X-User-Roles", "EMPLOYEE"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .json("[]"));
+        String action = "{\"idempotencyKey\":\"reject\",\"reason\":\"Coverage needed\"}";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path + "/reject")
+                        .header("X-User-Id", "7001")
+                        .header("X-User-Roles", "HR_MANAGER")
+                        .contentType("application/json")
+                        .content(action))
+                .andExpect(status().isForbidden());
+        for (int i = 0; i < 2; i++)
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path + "/reject")
+                            .header("X-User-Id", "7101")
+                            .header("X-User-Roles", "EMPLOYEE")
+                            .contentType("application/json")
+                            .content(action))
+                    .andExpect(status().isOk());
+        assertThat(balances.balance(entitlement).available()).isEqualTo("10.00");
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=?", Integer.class, r.id().toString()))
+                .isEqualTo(2);
+        var next = requests.submit(7001, request(type, "2026-10-30", "2026-11-03", "new"));
+        var cancel = new com.ems.leave_service.request.RequestModels.Action("cancel", "Plans changed");
+        requests.finish(next.id(), 7001, cancel, false);
+        requests.finish(next.id(), 7001, cancel, false);
+        requests.finish(
+                next.id(),
+                7001,
+                new com.ems.leave_service.request.RequestModels.Action("another", "Already cancelled"),
+                false);
+        assertThat(balances.balance(entitlement).available()).isEqualTo("10.00");
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox_event WHERE aggregate_id=?",
+                        Integer.class,
+                        next.id().toString()))
+                .isEqualTo(2);
+        assertThatThrownBy(() -> requests.finish(
+                        next.id(),
+                        7001,
+                        new com.ems.leave_service.request.RequestModels.Action("cancel", "Changed payload"),
+                        false))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> requests.submit(7001, request(type, "2026-10-29", "2026-10-29", "weekend")))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        calendar.deleteHoliday(holiday);
+    }
+
+    @Test
+    void concurrentRequestOverlapAndOverdrawNeverLeaveOrphanReservations() throws Exception {
+        var entitlement = requestEmployee(7002, "1.00");
+        var type = balances.balance(entitlement).typeId();
+        var gate = new java.util.concurrent.CountDownLatch(1);
+        var successes = new java.util.concurrent.atomic.AtomicInteger();
+        try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var tasks = new ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 6; i++) {
+                final int n = i;
+                tasks.add(pool.submit(() -> {
+                    gate.await();
+                    try {
+                        requests.submit(7002, request(type, "2026-12-01", "2026-12-01", "parallel" + n));
+                        successes.incrementAndGet();
+                    } catch (org.springframework.web.server.ResponseStatusException ex) {
+                        assertThat(ex.getStatusCode().value()).isEqualTo(409);
+                    }
+                    return null;
+                }));
+            }
+            gate.countDown();
+            for (var task : tasks) task.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(successes.get()).isEqualTo(1);
+        assertThatThrownBy(() -> requests.submit(7002, request(type, "2026-12-02", "2026-12-02", "no-balance")))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM leave_reservation WHERE entitlement_id=?", Integer.class, entitlement))
+                .isEqualTo(1);
+        assertThat(requests.mine(7002)).hasSize(1);
+        assertThat(balances.balance(entitlement).available()).isEqualTo("0.00");
+        // Concurrent identical retries return one request and reserve only once.
+        var e = requestEmployee(7003, "2.00");
+        var input = request(balances.balance(e).typeId(), "2026-12-03", "2026-12-03", "same");
+        try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var tasks = new ArrayList<java.util.concurrent.Future<UUID>>();
+            for (int i = 0; i < 4; i++)
+                tasks.add(pool.submit(() -> requests.submit(7003, input).id()));
+            var ids = new HashSet<UUID>();
+            for (var task : tasks) ids.add(task.get(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertThat(ids).hasSize(1);
+        }
+        assertThat(balances.balance(e).reserved()).isEqualTo("1.00");
+    }
+
+    @Test
+    void requestValidationFallbackRoutingAndFutureStates() throws Exception {
+        var e = entitlement(7004, "10.00");
+        var type = balances.balance(e).typeId();
+        for (var input : List.of(
+                request(type, "2026-12-02", "2026-12-01", "reverse"),
+                request(type, "2026-12-05", "2026-12-06", "weekend")))
+            assertThatThrownBy(() -> requests.submit(7004, input))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> requests.submit(7004, request(type, "2026-12-01", "2026-12-01", "missing-reviewer")))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        jdbc.update(
+                "INSERT INTO employee_projection(user_id,active,department_id) VALUES (7104,true,88),(7105,true,99),(7106,true,88)");
+        jdbc.update("UPDATE employee_projection SET department_id=88 WHERE user_id=7004");
+        var at = Instant.now().minusSeconds(5);
+        requests.reviewer(
+                7104,
+                new com.ems.leave_service.request.RequestModels.ReviewerSnapshot(
+                        com.ems.leave_service.request.RequestModels.ReviewerRole.DEPARTMENT_HEAD, at));
+        requests.reviewer(
+                7105,
+                new com.ems.leave_service.request.RequestModels.ReviewerSnapshot(
+                        com.ems.leave_service.request.RequestModels.ReviewerRole.HR_MANAGER, at));
+        requests.reviewer(
+                7106,
+                new com.ems.leave_service.request.RequestModels.ReviewerSnapshot(
+                        com.ems.leave_service.request.RequestModels.ReviewerRole.DEPARTMENT_HEAD, at));
+        var r = requests.submit(7004, request(type, "2026-12-01", "2026-12-01", "fallback"));
+        assertThat(r.approverId()).isEqualTo(7104);
+        var route = new com.ems.leave_service.request.RequestModels.Route(7106, "route", "Coverage delegation");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/api/leaves/requests/" + r.id() + "/route")
+                        .header("X-User-Id", "7104")
+                        .header("X-User-Roles", "DEPARTMENT_HEAD")
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(route)))
+                .andExpect(status().isForbidden());
+        requests.route(r.id(), 7105, route);
+        assertThat(requests.inbox(7104, false)).isEmpty();
+        assertThat(requests.inbox(7106, false)).extracting(v -> v.id()).contains(r.id());
+        assertThatThrownBy(() -> requests.get(r.id(), 7104, false))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> requests.route(
+                        r.id(),
+                        7105,
+                        new com.ems.leave_service.request.RequestModels.Route(7004, "self", "Invalid self")))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        for (String state : List.of("APPROVAL_IN_PROGRESS", "APPROVED", "APPROVAL_FAILED")) {
+            jdbc.update("UPDATE leave_request SET status=? WHERE id=?", state, r.id());
+            assertThatThrownBy(() -> requests.finish(
+                            r.id(),
+                            7004,
+                            new com.ems.leave_service.request.RequestModels.Action("cancel-" + state, "Deferred"),
+                            false))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        }
+        assertThat(balances.balance(e).reserved()).isEqualTo("1.00");
+        var half = new com.ems.leave_service.request.RequestModels.EstimateInput(
+                java.time.LocalDate.parse("2026-12-02"),
+                java.time.LocalDate.parse("2026-12-02"),
+                com.ems.leave_service.request.RequestModels.Fraction.HALF);
+        assertThat(requests.estimate(half).calculatedDays()).isEqualTo("0.50");
+        assertThatThrownBy(() -> requests.estimate(new com.ems.leave_service.request.RequestModels.EstimateInput(
+                        half.startDate(), half.endDate().plusDays(1), half.dayFraction())))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
 }
