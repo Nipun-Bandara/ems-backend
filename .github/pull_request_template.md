@@ -3,7 +3,9 @@ Title this PR as a Conventional Commit — the commitlint check reads it:
 
     <type>(<scope>): <subject>
 
-Scopes: gateway | identity | common | build | ci
+Example: feat(employee): add CV sections to employee profiles
+
+Scopes: gateway | identity | common | notification | org | employee | leave | timesheet | claim | recruitment | engagement | document | build | ci | deploy | docs
 -->
 
 ## What changed

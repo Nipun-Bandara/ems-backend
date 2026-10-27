@@ -79,7 +79,8 @@ services:
       start_period: 10s
 
   minio:
-    image: minio/minio:latest
+    # Same release/digest as EmployeeProfileIntegrationTest; see docs/ci.md.
+    image: dappros/minio:RELEASE.2025-09-07T16-13-09Z@sha256:624bad2fe79a8613aa3c5c9b765ebcab365080b8445cf1b05c357cc7753725f0
     container_name: ems-minio
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]

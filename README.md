@@ -117,3 +117,7 @@ Add `-v` to delete the volumes as well, discarding all local data.
   volume already existed. Recreate it with `docker compose down -v`.
 - **Port already allocated** — something else on the host owns that port; stop
   it, or change the host side of the mapping in `docker-compose.yml`.
+
+## CI and PR titles
+
+See [CI checks and PR title examples](docs/ci.md) before merging into development.
