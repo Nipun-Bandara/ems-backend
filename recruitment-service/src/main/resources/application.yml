@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: recruitment-service
+  profiles:
+    active: development
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/recruitment_db}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+server:
+  port: 8088
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+ems:
+  storage:
+    # No candidate attachments exist in the foundation. Enable with the referral feature.
+    enabled: false

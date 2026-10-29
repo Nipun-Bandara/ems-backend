@@ -26,6 +26,7 @@
         <module>leave-service</module>
         <module>timesheet-service</module>
         <module>claim-service</module>
+        <module>recruitment-service</module>
     </modules>
 
     <properties>
