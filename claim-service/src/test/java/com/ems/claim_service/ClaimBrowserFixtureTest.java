@@ -15,14 +15,32 @@ import org.testcontainers.rabbitmq.RabbitMQContainer;
 class ClaimBrowserFixtureTest {
     @Test
     void serve() throws Exception {
-        try (var db = new PostgreSQLContainer("postgres:17").withDatabaseName("claim_browser_fixture");
+        try (var minio = new org.testcontainers.containers.GenericContainer<>(
+                                "dappros/minio:RELEASE.2025-09-07T16-13-09Z@sha256:624bad2fe79a8613aa3c5c9b765ebcab365080b8445cf1b05c357cc7753725f0")
+                        .withEnv("MINIO_ROOT_USER", "ems_minio")
+                        .withEnv("MINIO_ROOT_PASSWORD", "ems_local_dev")
+                        .withEnv(
+                                "MINIO_API_CORS_ALLOW_ORIGIN",
+                                "http://127.0.0.1:3007,http://localhost:3007,http://127.0.0.1:3008,http://localhost:3008")
+                        .withCommand("server", "/data")
+                        .withExposedPorts(9000)
+                        .waitingFor(org.testcontainers.containers.wait.strategy.Wait.forHttp("/minio/health/ready")
+                                .forPort(9000));
+                var db = new PostgreSQLContainer("postgres:17").withDatabaseName("claim_browser_fixture");
                 var rabbit = new RabbitMQContainer("rabbitmq:4-management")) {
+            minio.start();
             db.start();
             rabbit.start();
             try (var ctx = new SpringApplication(ClaimServiceApplication.class)
                     .run(
                             "--spring.profiles.active=test",
                             "--server.port=0",
+                            "--ems.storage.enabled=true",
+                            "--ems.storage.endpoint=http://127.0.0.1:" + minio.getMappedPort(9000),
+                            "--ems.storage.public-endpoint=http://127.0.0.1:" + minio.getMappedPort(9000),
+                            "--ems.storage.access-key=ems_minio",
+                            "--ems.storage.secret-key=ems_local_dev",
+                            "--ems.storage.path-style-access=true",
                             "--spring.datasource.url=" + db.getJdbcUrl(),
                             "--spring.datasource.username=" + db.getUsername(),
                             "--spring.datasource.password=" + db.getPassword(),
