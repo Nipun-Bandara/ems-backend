@@ -2,7 +2,7 @@
 import http from "node:http";
 import { readFileSync } from "node:fs";
 const portFile=new URL("../target/browser-fixture/port",import.meta.url);
-const sessions={employee:6101,other:6102,manager:6201,unrelated:6202};
+const sessions={employee:6101,other:6102,manager:6201,unrelated:6202,hr:6301};
 const user=kind=>({userId:sessions[kind],email:`${kind}@example.test`,username:kind,roles:["EMPLOYEE"],isBanned:false,emailVerified:true,departmentId:null,departmentName:null,token:`fixture-${kind}`,refreshToken:`fixture-refresh-${kind}`});
 http.createServer(async(req,res)=>{
   const reply=(status,value)=>{res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(value));};
