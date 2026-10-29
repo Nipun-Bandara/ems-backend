@@ -1,0 +1,982 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Expense claims",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/claims": {
+      "post": {
+        "operationId": "create",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Create"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/me": {
+      "get": {
+        "operationId": "mine",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Claim"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/claims/permissions": {
+      "get": {
+        "operationId": "permissions",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Permissions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/claims/{id}": {
+      "get": {
+        "operationId": "getClaim",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "save",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Save"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteDraft",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/claims/{id}/submit": {
+      "post": {
+        "operationId": "submit",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Transition"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/{id}/withdraw": {
+      "post": {
+        "operationId": "withdraw",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Transition"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/{id}/approve": {
+      "post": {
+        "operationId": "approve",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Transition"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/{id}/reject": {
+      "post": {
+        "operationId": "reject",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Transition"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/reviewer/inbox": {
+      "get": {
+        "operationId": "inbox",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Claim"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/claims/reviewer/{id}": {
+      "get": {
+        "operationId": "detail",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/claims/admin/employees/{userId}": {
+      "put": {
+        "operationId": "reconcile",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeScope"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/admin/reviewers/{userId}": {
+      "put": {
+        "operationId": "reviewer",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Not permitted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Stale version or transition conflict"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reviewer"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Line": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "expenseDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^[0-9]{1,17}(\\.[0-9]{1,2})?$",
+            "description": "Positive exact decimal; at most two fractional digits. No conversion."
+          }
+        },
+        "required": [
+          "category",
+          "expenseDate",
+          "description",
+          "currency",
+          "amount"
+        ]
+      },
+      "Create": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        },
+        "required": [
+          "currency"
+        ]
+      },
+      "Save": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "version",
+          "lines"
+        ]
+      },
+      "Transition": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "History": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "actorId",
+          "reason",
+          "version",
+          "occurredAt"
+        ]
+      },
+      "Claim": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "SUBMITTED",
+              "APPROVED",
+              "REJECTED",
+              "WITHDRAWN"
+            ]
+          },
+          "total": {
+            "type": "string",
+            "description": "Exact sum of persisted lines, two decimal places"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/History"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "employeeId",
+          "currency",
+          "status",
+          "total",
+          "version",
+          "lines",
+          "createdAt",
+          "updatedAt",
+          "submittedAt",
+          "history"
+        ]
+      },
+      "Permissions": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "reviewer": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "reviewer",
+          "currency"
+        ]
+      },
+      "EmployeeScope": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "departmentId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "reportingManagerUserId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "active",
+          "asOf"
+        ]
+      },
+      "Reviewer": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "HR_MANAGER"
+            ],
+            "nullable": true
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "asOf"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

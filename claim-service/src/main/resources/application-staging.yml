@@ -1,0 +1,3 @@
+spring:
+  config:
+    import: optional:file:./claim-service/.env.staging[.properties],optional:file:.env.staging[.properties]

@@ -25,6 +25,10 @@ spring:
               predicates:
                 - Path=/api/leaves/**
 
+            - id: claim-service
+              uri: ${CLAIM_SERVICE_URL:http://localhost:8087}
+              predicates:
+                - Path=/api/claims/**
             - id: timesheet-service
               uri: ${TIMESHEET_SERVICE_URL:http://localhost:8086}
               predicates:
