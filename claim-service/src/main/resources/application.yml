@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: claim-service
+  profiles:
+    active: development
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/claim_db}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+server:
+  port: 8087
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+ems:
+  storage:
+    enabled: false
+  claims:
+    currency: ${CLAIM_CURRENCY:LKR}

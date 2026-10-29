@@ -1,0 +1,3 @@
+spring:
+  config:
+    import: optional:file:./claim-service/.env.production[.properties],optional:file:.env.production[.properties]
