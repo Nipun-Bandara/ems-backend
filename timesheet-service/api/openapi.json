@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EMS Timesheets",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "paths": {
     "/api/timesheets": {
@@ -1551,6 +1551,674 @@
           }
         ]
       }
+    },
+    "/api/timesheets/attendance/current": {
+      "get": {
+        "operationId": "attendanceCurrent",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/clock-in": {
+      "post": {
+        "operationId": "attendanceClockIn",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceClockIn"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/{id}/clock-out": {
+      "post": {
+        "operationId": "attendanceClockOut",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/history": {
+      "get": {
+        "operationId": "attendanceHistory",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/hr/history": {
+      "get": {
+        "operationId": "attendanceHrHistory",
+        "parameters": [
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/hr/{id}/corrections": {
+      "post": {
+        "operationId": "attendanceCorrect",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceCorrection"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/{id}/corrections": {
+      "get": {
+        "operationId": "attendanceAudit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceAudit"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timesheets/attendance/summary": {
+      "get": {
+        "operationId": "attendanceSummary",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded presence only; no timesheet or leave mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unauthenticated, forbidden, missing or conflicting attendance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2081,6 +2749,257 @@
               "HR_MANAGER",
               null
             ]
+          }
+        }
+      },
+      "AttendanceSession": {
+        "type": "object",
+        "required": [
+          "id",
+          "employeeId",
+          "clockIn",
+          "clockOut",
+          "version",
+          "durationSeconds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "clockIn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clockOut": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "AttendanceClockIn": {
+        "type": "object",
+        "required": [
+          "requestId"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable UUID for this clock-in. Reuse on retry, including after close."
+          }
+        }
+      },
+      "AttendanceCorrection": {
+        "type": "object",
+        "required": [
+          "version",
+          "clockIn",
+          "clockOut",
+          "reason"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "clockIn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clockOut": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "AttendanceAudit": {
+        "type": "object",
+        "required": [
+          "id",
+          "actorId",
+          "correctedAt",
+          "reason",
+          "beforeIn",
+          "beforeOut",
+          "afterIn",
+          "afterOut",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "correctedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "beforeIn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "beforeOut": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "afterIn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "afterOut": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AttendanceState": {
+        "type": "object",
+        "required": [
+          "timezone",
+          "serverTime",
+          "hr",
+          "sessions"
+        ],
+        "properties": {
+          "timezone": {
+            "type": "string"
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hr": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceSession"
+            }
+          }
+        }
+      },
+      "AttendanceHistory": {
+        "type": "object",
+        "required": [
+          "timezone",
+          "items",
+          "page",
+          "size",
+          "total"
+        ],
+        "properties": {
+          "timezone": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceSession"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AttendanceDay": {
+        "type": "object",
+        "required": [
+          "date",
+          "recordedSeconds"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "recordedSeconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AttendanceSummary": {
+        "type": "object",
+        "required": [
+          "timezone",
+          "from",
+          "to",
+          "days",
+          "openSessions"
+        ],
+        "properties": {
+          "timezone": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceDay"
+            }
+          },
+          "openSessions": {
+            "type": "integer"
           }
         }
       }

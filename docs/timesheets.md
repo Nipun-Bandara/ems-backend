@@ -329,3 +329,157 @@ event replay where no local contact exists; real production identity sessions; r
 and environment rollout of migrations, routing and durable subscriptions. These remain rollout checks. SMTP
 acceptance/commit ambiguity remains as documented above. No final whole-repository backend run is claimed:
 the unchanged whole-repository baseline and the affected services' verification runs are the executed evidence.
+
+## Attendance clock and HR corrections (item 33)
+
+Both repositories use `feat/attendance-clock`, based on backend development `8031a1c` and frontend
+`9fa091e`. Items 31 and 32 were inspected in `TimesheetService`, `ReviewScope`, projection handling,
+Flyway migrations, the checked-in contract, the cookie BFF and the timesheet/review pages.
+
+Attendance is **recorded presence**, independent of timesheet approval and leave. Clock actions and
+corrections do not create timesheets, approve entries, change leave balances or resolve leave conflicts.
+No attendance events or downstream consumers are introduced; the existing shared outbox remains unchanged.
+Storage stays disabled. There are no new runtime or test packages, PostgreSQL extensions, or library versions.
+
+V4 adds `attendance_session` and `attendance_correction_audit` to the timesheet-owned database only.
+It is additive and preserves existing sheet/review data. PostgreSQL's built-in GiST range operators enforce
+non-overlap for each employee without requiring `btree_gist` or extension-install privileges. A partial unique
+index independently enforces one open session; a check prevents negative duration. Intervals are half-open
+`[clockIn, clockOut)`, so adjacent sessions are valid. Zero-duration closed sessions are allowed and contribute
+zero presence. An open session extends indefinitely for overlap checking.
+
+UTC instants use `timestamptz` at microsecond precision. The existing `ORGANIZATION_TIMEZONE` setting controls
+all date grouping and frontend formatting, independently of the browser's timezone. Keep it consistent with
+leave/organization deployments. History orders by UTC clock-in descending and UUID for stable pagination.
+Concurrent changes can move rows between numbered pages; reload the history after corrections.
+
+### Attendance API / retry contract
+
+All paths below follow `/api/timesheets/attendance`. The additive OpenAPI contract is version 1.2.0;
+existing timesheet payloads are unchanged. Frontend types are generated using the installed toolchain:
+
+```sh
+node_modules/.bin/openapi-typescript ../ems-backend/timesheet-service/api/openapi.json \
+  -o 'app/(user)/attendance/contract.d.ts'
+```
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/current` | Organization timezone, serverTime, reconciled HR capability and own zero/one open session |
+| POST | `/clock-in` | `{requestId: UUID}`; server sets clock-in, requestId identifies the persisted session |
+| POST | `/{id}/clock-out` | Close that specific own session using server time; no client timestamp |
+| GET | `/history?page=0&size=20` | Own history; size 1–100, total count and pagination metadata |
+| GET | `/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` | Own daily recorded seconds, inclusive period up to 366 days, open count |
+| GET | `/hr/history?employeeId=...&page=0&size=20` | Explicit active-HR-only employee lookup |
+| POST | `/hr/{id}/corrections` | `{version,clockIn,clockOut,reason}`; explicit active-HR-only correction |
+| GET | `/{id}/corrections` | Before/after audit, actor, reason, time and resulting version; owner or active HR |
+
+Use one stable random requestId for each intended clock-in. Replays return the same session, even after it
+closes or a later session opens. Competing distinct IDs while open return 409; they do not create another
+session. Failed requests do not reserve their IDs; after a definite validation/conflict response reload state
+before initiating a new action. Clock-out retries target the original session ID and preserve its persisted
+close time; they never close a later session. In-flight browser clicks are guarded immediately and disabled
+while pending. Only an unresolved operation token is retained in sessionStorage, keyed to the signed-in user;
+attendance records and reload status always come from the server. A lost response can be recovered with
+Retry clock action, including after reload. Cookie refresh replays retain the same operation body.
+
+Clock-in requires the existing active employee projection; closed history remains readable by its owner.
+Clock-out can finish an existing session after deactivation. HR permission requires an active local employee
+and a reconciled `timesheet_reviewer` HR_MANAGER row, using item 32's SYSTEM_ADMIN reconciliation endpoint.
+Manager, department-head and browser/JWT role labels alone grant no correction authority. All corrections
+are authorized server-side, including when the UI hides the dialog. Target selection is only on explicit HR
+routes; own APIs take identity from the gateway. Service ports must remain private under the existing trust model.
+
+Corrections require a nonblank trimmed reason of at most 500 characters and the latest version. UTC instants
+or ISO timestamps with an explicit offset are accepted; future times, negative duration and overlapping
+sessions are rejected. A closed session cannot be reopened, preventing a delayed clock-out retry from
+closing a reopened session. A correction may close an open session. A stale correction returns 409 without
+adding an audit row; reload before retrying. Audit rows append reason, HR actor, correction time, before/after
+instants and resulting version in the same transaction as the session update. Audit data is visible in the
+page's Correction history. There is no application endpoint to delete sessions or audit rows.
+
+Projection locks coordinate authority changes with writes; employee-specific transaction advisory locks
+serialize clock/correction actions. Database constraints provide an additional guard against invalid direct
+writes. No source-service database or synchronous upstream authorization call is used.
+
+### Overnight sessions and summaries
+
+A Colombo session from 22:00 on October 20 to 06:00 on October 21 remains one eight-hour session:
+`2026-10-20T16:30:00Z` → `2026-10-21T00:30:00Z`. History shows both organization-local dates. A summary
+allocates two hours to October 20 and six hours to October 21. Local midnight boundaries use ZoneId rules;
+a daylight-saving transition can produce a 23- or 25-hour day. Sessions crossing the selected period are
+clipped to that period. Open sessions are counted separately and excluded from duration totals until closed.
+Daily durations aggregate microseconds before truncating to whole seconds; history also reports whole
+seconds, so subsecond remainders may cause a one-second difference across split dates.
+
+Open `/attendance` directly or use the dashboard clock's history link. The page uses existing React Query,
+react-hook-form/Zod, button styles and the cookie API client/BFF. The async server page checks the session
+cookie; the backend independently enforces every read/write permission. No shared navigation or BFF changes
+are required. HR enters full ISO timestamps with an explicit offset in the correction dialog, avoiding
+ambiguous local daylight-saving times.
+
+### Verification and release gate
+
+```sh
+# Unchanged development archive baseline
+mvn -B -ntp -f /tmp/attendance-baseline/pom.xml verify
+# Focused implementation verification (disposable PostgreSQL/RabbitMQ)
+mvn -B -ntp -pl timesheet-service clean verify
+python3 -m unittest discover -s timesheet-service/scripts -p test_backfill.py -v
+# Frontend
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+The disposable browser fixture now includes `hr@example.test` (6301), reconciled HR authority and an eight-hour
+overnight presence session for employee 6101. Start it with item 32's commands. Sign in as employee, double-click
+clock-in, reload `/attendance`, clock out, reload again and check a single closed session. Check the overnight
+row and summary dates. As employee, verify no correction control and API denial for a different employee.
+As HR, load employee 6101, open Correct session, try a blank reason, then save valid changed instants/reason.
+Reload history and inspect before/after values, actor and reason. Check negative/overlapping corrections are
+rejected with inputs retained. API integration tests separately exercise simultaneous requests and constraints.
+
+Required promotion sequence: feature PRs into development in both repositories; required title/build gates
+and review acceptance; development-to-staging PRs; staging leave failure demo plus timesheet review and
+attendance walkthrough; release acceptance; tag the accepted release commit `v0.4.0` in each repository.
+Do not tag the unaccepted feature head or bypass PR gates. Production deployment is excluded from this task.
+Use Conventional Commit titles, for example `feat(timesheet): add attendance clock and audited corrections`
+and `feat(timesheet): add attendance clock and HR correction UI`. Include these dependency/compatibility notes
+and only the verification actually run in each PR's existing template. The current backend CI path filter does
+not select timesheet-service; a green no-module run does not prove the focused tests ran. Fixing shared CI is
+outside this change's allowed paths, so supply the focused verification as a separate acceptance gate.
+
+### Attendance verification executed on 2026-10-29
+
+| Check | Executed evidence |
+| --- | --- |
+| Untouched backend baseline | Archive of current development `8031a1c`; `mvn -B -ntp verify`: BUILD SUCCESS, 188 discovered tests, 0 failures/errors, 3 skipped. |
+| Existing timesheet regression | All 10 `TimesheetIntegrationTest` cases passed in the changed service, including review decisions, rejection/reopen, scope/privacy and real packaged gateway probes for development/staging/production profiles. These profile probes are local tests, not a staging deployment. |
+| Attendance integration | 5 `AttendanceIntegrationTest` cases passed against isolated PostgreSQL/Flyway. Concurrent identical/different clock-ins, simultaneous clock-outs, old-action retries with a later open session, no auto-timesheet creation, Colombo midnight allocation, 25-hour DST day, pagination, own/other authorization, HR correction auditing/revocation, blank reason, stale version, overlap, negative duration and database constraints. |
+| Final attendance verification | `mvn -B -ntp -pl timesheet-service verify -Dtest=AttendanceIntegrationTest`: BUILD SUCCESS, 5 tests, 0 failures/errors/skips; final exception handler compiled and Spotless passed. The initial full focused run passed all 15 integration cases but failed formatting after the new exception-handler edit; formatting was repaired before this final run. |
+| Existing backfill utility | 3 tests passed. |
+| Frontend | Final `npm run lint`: 0 errors, same 6 existing warnings; `npx tsc --noEmit`: passed; final `npm run build`: passed. No packages added. Initial sandbox build could not fetch existing fonts; the successful build used host network access. |
+| Built-frontend browser | Cookie sign-in through the synthetic loopback gateway and real disposable backend. Double-click clock-in produced one new session alongside the single seeded overnight session. Full reload restored the open session; clock-out persisted a 26-second session. Overnight display was 22:00–06:00 Colombo and 28,800 seconds. Employee had no correction controls. HR loaded employee 6101, blank reason was blocked, an offset timestamp correction changed the overnight duration to 25,200 seconds, and fetched audit showed before/after, HR actor 6301, reason and correction timestamp. |
+| Existing review browser | Manager inbox scoped to employee 6101; 90-minute submitted detail displayed; blank rejection reason blocked; approval returned APPROVED/version 3 with reviewer 6201 retained in decision history. |
+
+The browser's existing mobile navigation opens over the content and must be closed before interacting; no
+shared navigation code was changed. Initial clicks hit that overlay, not the clock. Production cookie sign-in
+and workflows were then verified successfully on the built frontend. A development server was also started
+while diagnosing the overlay; it was not needed for the successful built-frontend checks.
+
+Browser automation did not successfully populate native date-picker fields, so **browser period-summary form
+submission is not claimed**. The summary API's overnight/DST/range behavior is covered by the executed backend
+tests. Real identity sessions, source projection reconciliation and a deployed staging walkthrough (including
+the leave failure demo and timesheet review) remain external rollout checks. No staging URL/test-account access
+was supplied. No staging acceptance or `v0.4.0` tag is claimed; release tagging must wait for those gates.
+
+All browser data is synthetic and all test databases/brokers disposable. No live data was deleted and no
+production deployment was performed. PRs must carry these exact limitations rather than treating profile
+probes or an unchanged baseline as deployed-staging verification.
+
+Publication attempt: GitHub repository reads succeeded and both remote development tips matched the local
+bases. Creating a Git tree in each repository returned HTTP 403, `Resource not accessible by integration`.
+A noninteractive Git push dry-run also failed because no HTTPS credential is configured. Repository Contents
+write access or an authenticated Git connection is required to publish the local commits and open the feature
+PRs. This is an access prerequisite, not a successful PR, merge, staging promotion or release. No tag was made.

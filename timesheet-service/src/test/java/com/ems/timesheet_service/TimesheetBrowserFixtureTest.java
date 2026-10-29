@@ -52,6 +52,21 @@ class TimesheetBrowserFixtureTest {
                 scope.reconcile(6202, new Models.EmployeeScope(true, 20L, null, at));
                 scope.reconcile(6101, new Models.EmployeeScope(true, 10L, 6201L, at));
                 scope.reconcile(6102, new Models.EmployeeScope(true, 20L, 6202L, at));
+                scope.reconcile(6301, new Models.EmployeeScope(true, 10L, null, at));
+                scope.reviewer(6301, new Models.Reviewer(at, Models.ReviewerRole.HR_MANAGER));
+                ctx.getBean(org.springframework.jdbc.core.JdbcTemplate.class)
+                        .update(
+                                "INSERT INTO attendance_session(id,employee_id,clock_in,clock_out) VALUES (?,?,?,?)",
+                                UUID.randomUUID(),
+                                6101,
+                                java.sql.Timestamp.from(today.minusDays(2)
+                                        .atTime(22, 0)
+                                        .atZone(ZoneId.of("Asia/Colombo"))
+                                        .toInstant()),
+                                java.sql.Timestamp.from(today.minusDays(1)
+                                        .atTime(6, 0)
+                                        .atZone(ZoneId.of("Asia/Colombo"))
+                                        .toInstant()));
                 var broker = ctx.getBean(org.springframework.amqp.core.AmqpAdmin.class);
                 broker.declareQueue(new org.springframework.amqp.core.Queue("timesheet.browser-events", true));
                 broker.declareBinding(new org.springframework.amqp.core.Binding(
