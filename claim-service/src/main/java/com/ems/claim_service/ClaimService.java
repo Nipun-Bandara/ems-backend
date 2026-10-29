@@ -114,6 +114,10 @@ public class ClaimService {
         if (claim.submittedAt() != null) return claim;
         draft(claim, input.version());
         if (claim.lines().isEmpty()) throw bad("At least one positive line item is required");
+        if (!Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM claim_receipt WHERE claim_id=? AND finalized=true AND deleted=false)",
+                Boolean.class,
+                id))) throw bad("Receipt policy: at least one finalized receipt is required before submission");
         var total = validate(claim.currency(), claim.lines());
         jdbc.update(
                 "UPDATE claim SET total=?,status='SUBMITTED',submitted_at=now(),updated_at=now(),version=version+1 WHERE id=?",

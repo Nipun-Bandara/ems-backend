@@ -24,6 +24,8 @@ import tools.jackson.databind.json.JsonMapper;
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 @Testcontainers
+@org.springframework.test.annotation.DirtiesContext(
+        classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class ClaimIntegrationTest {
     @Container
     static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:17").withDatabaseName("claim_test");
@@ -84,6 +86,13 @@ class ClaimIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value("0.30"))
                 .andExpect(jsonPath("$.lines.length()").value(2));
+        jdbc.update(
+                "INSERT INTO claim_receipt(id,claim_id,owner_id,object_key,filename,content_type,size,expires_at,finalized) VALUES (?,?,?,?,?,'application/pdf',1,now(),true)",
+                UUID.randomUUID(),
+                UUID.fromString(id),
+                actor,
+                "test/" + UUID.randomUUID(),
+                "fixture.pdf");
         return id;
     }
 

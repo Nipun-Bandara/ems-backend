@@ -28,6 +28,13 @@ logging:
     correlation: "[%X{correlationId:-}] "
 ems:
   storage:
-    enabled: false
+    enabled: ${STORAGE_ENABLED:true}
+    endpoint: ${STORAGE_ENDPOINT:}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:}
+    region: ${STORAGE_REGION:us-east-1}
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    path-style-access: ${STORAGE_PATH_STYLE_ACCESS:false}
+    allowed-origins: ${STORAGE_ALLOWED_ORIGINS:}
   claims:
     currency: ${CLAIM_CURRENCY:LKR}

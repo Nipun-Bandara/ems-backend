@@ -19,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(properties = {"ems.storage.enabled=false", "ems.outbox.poll-interval=200ms"})
 @ActiveProfiles("test")
 @Testcontainers
+@org.springframework.test.annotation.DirtiesContext(
+        classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class ClaimMessagingIntegrationTest {
     @Container
     static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:17");
@@ -36,6 +38,9 @@ class ClaimMessagingIntegrationTest {
         p.add("spring.rabbitmq.username", RABBIT::getAdminUsername);
         p.add("spring.rabbitmq.password", RABBIT::getAdminPassword);
     }
+
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Autowired
     ClaimService service;
@@ -79,6 +84,13 @@ class ClaimMessagingIntegrationTest {
                         List.of(
                                 new Models.Line("Travel", LocalDate.of(2026, 10, 29), "Train", "LKR", "0.10"),
                                 new Models.Line("Meals", LocalDate.of(2026, 10, 29), "Lunch", "LKR", "0.20"))));
+        jdbc.update(
+                "INSERT INTO claim_receipt(id,claim_id,owner_id,object_key,filename,content_type,size,expires_at,finalized) VALUES (?,?,?,?,?,'application/pdf',1,now(),true)",
+                UUID.randomUUID(),
+                saved.id(),
+                901,
+                "test/" + UUID.randomUUID(),
+                "fixture.pdf");
         service.submit(saved.id(), 901, new Models.Transition(1L, null));
         service.submit(saved.id(), 901, new Models.Transition(1L, null));
         service.decide(saved.id(), 902, new Models.Transition(2L, null), false);

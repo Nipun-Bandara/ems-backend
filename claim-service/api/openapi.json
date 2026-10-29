@@ -705,6 +705,314 @@
           }
         }
       }
+    },
+    "/api/claims/{claim}/receipts": {
+      "get": {
+        "operationId": "listReceipts",
+        "parameters": [
+          {
+            "name": "claim",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid receipt; PDF/image up to 10 MiB required"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Outside review scope"
+          },
+          "404": {
+            "description": "Claim or receipt not found"
+          },
+          "409": {
+            "description": "Only drafts allow receipt changes"
+          },
+          "410": {
+            "description": "Upload intent expired; request a new intent"
+          },
+          "503": {
+            "description": "Receipt storage unavailable"
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Receipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "description": "Owner draft edits only. Reads require owner or current eligible reviewer of a submitted claim. Finalization binds only the generated intent key; no object key is accepted."
+      }
+    },
+    "/api/claims/{claim}/receipts/upload-intents": {
+      "post": {
+        "operationId": "createReceiptIntent",
+        "parameters": [
+          {
+            "name": "claim",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid receipt; PDF/image up to 10 MiB required"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Outside review scope"
+          },
+          "404": {
+            "description": "Claim or receipt not found"
+          },
+          "409": {
+            "description": "Only drafts allow receipt changes"
+          },
+          "410": {
+            "description": "Upload intent expired; request a new intent"
+          },
+          "503": {
+            "description": "Receipt storage unavailable"
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptIntent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "description": "Owner draft edits only. Reads require owner or current eligible reviewer of a submitted claim. Finalization binds only the generated intent key; no object key is accepted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptUpload"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/claims/{claim}/receipts/{id}/finalize": {
+      "put": {
+        "operationId": "finalizeReceipt",
+        "parameters": [
+          {
+            "name": "claim",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid receipt; PDF/image up to 10 MiB required"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Outside review scope"
+          },
+          "404": {
+            "description": "Claim or receipt not found"
+          },
+          "409": {
+            "description": "Only drafts allow receipt changes"
+          },
+          "410": {
+            "description": "Upload intent expired; request a new intent"
+          },
+          "503": {
+            "description": "Receipt storage unavailable"
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "description": "Owner draft edits only. Reads require owner or current eligible reviewer of a submitted claim. Finalization binds only the generated intent key; no object key is accepted."
+      }
+    },
+    "/api/claims/{claim}/receipts/{id}/download": {
+      "get": {
+        "operationId": "downloadReceipt",
+        "parameters": [
+          {
+            "name": "claim",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid receipt; PDF/image up to 10 MiB required"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Outside review scope"
+          },
+          "404": {
+            "description": "Claim or receipt not found"
+          },
+          "409": {
+            "description": "Only drafts allow receipt changes"
+          },
+          "410": {
+            "description": "Upload intent expired; request a new intent"
+          },
+          "503": {
+            "description": "Receipt storage unavailable"
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptDownload"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "description": "Owner draft edits only. Reads require owner or current eligible reviewer of a submitted claim. Finalization binds only the generated intent key; no object key is accepted."
+      }
+    },
+    "/api/claims/{claim}/receipts/{id}": {
+      "delete": {
+        "operationId": "deleteReceipt",
+        "parameters": [
+          {
+            "name": "claim",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid receipt; PDF/image up to 10 MiB required"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Outside review scope"
+          },
+          "404": {
+            "description": "Claim or receipt not found"
+          },
+          "409": {
+            "description": "Only drafts allow receipt changes"
+          },
+          "410": {
+            "description": "Upload intent expired; request a new intent"
+          },
+          "503": {
+            "description": "Receipt storage unavailable"
+          },
+          "204": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "description": "Owner draft edits only. Reads require owner or current eligible reviewer of a submitted claim. Finalization binds only the generated intent key; no object key is accepted."
+      }
     }
   },
   "components": {
@@ -970,6 +1278,110 @@
         "required": [
           "asOf"
         ]
+      },
+      "Receipt": {
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "contentType",
+          "size"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReceiptUpload": {
+        "type": "object",
+        "required": [
+          "filename",
+          "contentType",
+          "size"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "application/pdf",
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 10485760
+          }
+        }
+      },
+      "ReceiptIntent": {
+        "type": "object",
+        "required": [
+          "intentId",
+          "uploadUrl",
+          "headers",
+          "maxSize",
+          "expiresAt"
+        ],
+        "properties": {
+          "intentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uploadUrl": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "maxSize": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ReceiptDownload": {
+        "type": "object",
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     },
     "securitySchemes": {
